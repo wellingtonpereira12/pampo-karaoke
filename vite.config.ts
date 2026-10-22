@@ -1,6 +1,5 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-// @ts-expect-error yt-search has no official types
 import ytSearch from 'yt-search';
 
 function karaokeApiPlugin(): Plugin {
