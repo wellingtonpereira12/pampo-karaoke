@@ -1,0 +1,16 @@
+services:
+  pampo-karaoke:
+    build: .
+    container_name: pampo-karaoke
+    restart: always
+    ports:
+      - "3130:3130"
+    environment:
+      - PORT=3130
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3130/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
