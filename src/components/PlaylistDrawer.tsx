@@ -17,7 +17,7 @@ import {
   Music2,
 } from 'lucide-react';
 import type { VideoItem } from '../audio/types';
-import { extractYouTubeId, searchKaraokeVideos, POPULAR_KARAOKE_HITS } from '../services/youtubeService';
+import { searchKaraokeVideos, POPULAR_KARAOKE_HITS } from '../services/youtubeService';
 
 interface PlaylistDrawerProps {
   isOpen: boolean;
@@ -60,22 +60,6 @@ export const PlaylistDrawer: React.FC<PlaylistDrawerProps> = ({
 
     setIsSearching(true);
     try {
-      const directId = extractYouTubeId(query);
-      if (directId) {
-        const item: VideoItem = {
-          id: directId,
-          title: 'Música do YouTube',
-          channel: 'Link Direto',
-          duration: 'Vídeo',
-          thumbnail: `https://i.ytimg.com/vi/${directId}/hqdefault.jpg`,
-          url: `https://www.youtube.com/watch?v=${directId}`,
-        };
-        onAddSong(item);
-        setQuickInput('');
-        showSuccessAnimation();
-        return;
-      }
-
       const results = await searchKaraokeVideos(query);
       if (results && results.length > 0) {
         onAddSong(results[0]);

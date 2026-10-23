@@ -92,23 +92,64 @@ export function extractYouTubeId(input: string): string | null {
   return null;
 }
 
+export async function fetchVideoInfo(idOrUrl: string): Promise<{
+  video: VideoItem;
+  embeddable: boolean;
+  alternative?: VideoItem | null;
+} | null> {
+  const directId = extractYouTubeId(idOrUrl);
+  if (!directId) return null;
+
+  try {
+    const res = await fetch(`/api/video-info?id=${encodeURIComponent(directId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      const video: VideoItem = {
+        id: data.id,
+        title: data.title || 'Música do YouTube',
+        channel: data.channel || 'YouTube',
+        duration: data.duration || '',
+        thumbnail: data.thumbnail || `https://i.ytimg.com/vi/${data.id}/hqdefault.jpg`,
+        url: data.url || `https://www.youtube.com/watch?v=${data.id}`,
+      };
+      return {
+        video,
+        embeddable: data.embeddable !== false,
+        alternative: data.alternative || null,
+      };
+    }
+  } catch (err) {
+    console.warn('Erro ao obter info do vídeo:', err);
+  }
+
+  return {
+    video: {
+      id: directId,
+      title: 'Música do YouTube',
+      channel: 'Link Direto',
+      duration: 'YouTube',
+      thumbnail: `https://i.ytimg.com/vi/${directId}/hqdefault.jpg`,
+      url: `https://www.youtube.com/watch?v=${directId}`,
+    },
+    embeddable: true,
+  };
+}
+
 export async function searchKaraokeVideos(query: string): Promise<VideoItem[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
 
-  // Check if it is a direct YouTube URL
+  // Check if it is a direct YouTube URL or 11-char ID
   const directId = extractYouTubeId(trimmed);
   if (directId) {
-    return [
-      {
-        id: directId,
-        title: 'Música do YouTube Selecionada',
-        channel: 'Link Direto',
-        duration: 'YouTube',
-        thumbnail: `https://i.ytimg.com/vi/${directId}/hqdefault.jpg`,
-        url: `https://www.youtube.com/watch?v=${directId}`,
-      },
-    ];
+    const info = await fetchVideoInfo(directId);
+    if (info) {
+      // If original video has embedding blocked by owner, provide working alternative first
+      if (!info.embeddable && info.alternative) {
+        return [info.alternative, info.video];
+      }
+      return [info.video];
+    }
   }
 
   try {

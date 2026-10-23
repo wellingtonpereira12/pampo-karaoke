@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Loader2, Play, Link as LinkIcon, Music, Plus, Check } from 'lucide-react';
 import type { VideoItem } from '../audio/types';
-import { searchKaraokeVideos, extractYouTubeId } from '../services/youtubeService';
+import { searchKaraokeVideos, extractYouTubeId, fetchVideoInfo } from '../services/youtubeService';
 
 interface SearchBarProps {
   onSelectSong: (video: VideoItem) => void;
@@ -34,21 +34,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const performSearch = async (term: string) => {
     const trimmed = term.trim();
     if (!trimmed) return;
-
-    const detectedId = extractYouTubeId(trimmed);
-    if (detectedId) {
-      const directVideo: VideoItem = {
-        id: detectedId,
-        title: 'Música do YouTube',
-        channel: 'Link Direto',
-        duration: 'Vídeo',
-        thumbnail: `https://i.ytimg.com/vi/${detectedId}/hqdefault.jpg`,
-        url: `https://www.youtube.com/watch?v=${detectedId}`,
-      };
-      setResults([directVideo]);
-      setHasSearched(true);
-      return;
-    }
 
     setLoading(true);
     setHasSearched(true);
@@ -109,15 +94,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           {directId && onAddToPlaylist && (
             <button
               type="button"
-              onClick={() => {
-                onAddToPlaylist({
+              onClick={async () => {
+                const info = await fetchVideoInfo(directId);
+                const toAdd = info ? (info.embeddable ? info.video : (info.alternative || info.video)) : {
                   id: directId,
                   title: 'Música do YouTube',
                   channel: 'Link Direto',
                   duration: 'Vídeo',
                   thumbnail: `https://i.ytimg.com/vi/${directId}/hqdefault.jpg`,
                   url: `https://www.youtube.com/watch?v=${directId}`,
-                });
+                };
+                onAddToPlaylist(toAdd);
                 setQuery('');
               }}
               title="Adicionar direto à Playlist"

@@ -33,8 +33,12 @@ app.use((req, res, next) => {
   const host = req.get('x-forwarded-host') || req.get('host') || '';
   const proto = req.get('x-forwarded-proto') || req.protocol;
 
-  // Se o usuário digitou o IP diretamente ou a porta :3130, ou acessou por HTTP inseguro, redireciona para HTTPS
-  if (host.includes('187.127.17.88') || host.includes(':3130') || (proto === 'http' && !req.secure)) {
+  // Ignora chamadas locais (localhost, 127.0.0.1)
+  const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+  if (isLocalhost) return next();
+
+  // Se o usuário digitou o IP diretamente ou acessou por HTTP inseguro na VPS, redireciona para HTTPS
+  if (host.includes('187.127.17.88') || (proto === 'http' && !req.secure)) {
     return res.redirect(301, `https://karaoke.pampo.tech${req.originalUrl}`);
   }
 
@@ -212,6 +216,77 @@ async function isVideoEmbeddable(videoId) {
     return true;
   }
 }
+
+// Endpoint para obter metadados reais de um vídeo do YouTube por ID ou URL e validar incorporação
+app.get('/api/video-info', async (req, res) => {
+  try {
+    const rawId = String(req.query.id || req.query.url || '').trim();
+    let videoId = rawId;
+    const match = rawId.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+    if (match && match[1]) {
+      videoId = match[1];
+    }
+
+    if (!videoId || videoId.length !== 11) {
+      return res.status(400).json({ error: 'ID do vídeo inválido' });
+    }
+
+    const embeddable = await isVideoEmbeddable(videoId);
+    let details = null;
+    try {
+      details = await ytSearch({ videoId });
+    } catch (e) {}
+
+    const title = details?.title || 'Música do YouTube';
+    const channel = details?.author?.name || 'YouTube';
+    const duration = details?.timestamp || '';
+    const thumbnail = details?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+    // Se o dono bloqueou reprodução externa (Erro 150), busca proativamente uma versão alternativa liberada
+    let alternative = null;
+    if (!embeddable) {
+      try {
+        const cleanTitle = title
+          .replace(/\(Karaok[eê].*?\)/gi, '')
+          .replace(/\[.*?\]/g, '')
+          .replace(/\|\s*Karaoke.*$/gi, '')
+          .replace(/Karaoke.*$/gi, '')
+          .trim();
+        const searchRes = await ytSearch(`${cleanTitle} karaoke instrumental`);
+        if (searchRes && Array.isArray(searchRes.videos)) {
+          for (const v of searchRes.videos.slice(0, 10)) {
+            if (v.videoId !== videoId && await isVideoEmbeddable(v.videoId)) {
+              alternative = {
+                id: v.videoId,
+                title: v.title,
+                channel: v.author?.name || 'Karaokê',
+                duration: v.timestamp || '',
+                thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
+                url: v.url,
+              };
+              break;
+            }
+          }
+        }
+      } catch (err) {}
+    }
+
+    return res.json({
+      id: videoId,
+      title,
+      channel,
+      duration,
+      thumbnail,
+      url,
+      embeddable,
+      alternative,
+    });
+  } catch (err) {
+    console.error('video-info error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // YouTube karaoke search endpoint com filtro de vídeos com reprodução liberada
 app.get('/api/search', async (req, res) => {
