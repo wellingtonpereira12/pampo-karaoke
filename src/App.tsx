@@ -456,7 +456,8 @@ export function App() {
               setIsRoomsModalOpen(true);
             }
           }}
-          onOpenPlaylist={() => setIsPlaylistOpen(true)}
+          onOpenPlaylist={() => setIsPlaylistOpen(prev => !prev)}
+          isPlaylistOpen={isPlaylistOpen}
           playlistCount={activePlaylist.length}
           connectedMicCount={mics.length}
           isFullscreen={isFullscreen}
@@ -475,12 +476,14 @@ export function App() {
         />
       )}
 
-      {/* Main Content Area (shifted right if in room, with dynamic video ambilight in studio mode) */}
+      {/* Main Content Area (shifted right if in room, pushed left if playlist open, with dynamic video ambilight in studio mode) */}
       <main 
-        className={`relative z-10 flex-1 flex flex-col items-center justify-start w-full mx-auto px-2 sm:px-4 py-2 transition-all duration-700 ${
+        className={`relative z-10 flex-1 flex flex-col items-center justify-start w-full mx-auto px-2 sm:px-4 py-2 transition-all duration-300 ease-out ${
           isStudioMode && currentSong ? 'max-w-[99vw] md:px-4' : 'max-w-7xl'
         } ${
           currentRoom ? 'md:pl-80' : ''
+        } ${
+          isPlaylistOpen ? 'md:pr-[380px] lg:pr-[420px]' : ''
         }`}
         style={
           isStudioMode && videoPalette ? {
@@ -517,11 +520,17 @@ export function App() {
                 </div>
               )}
 
-              {/* Stage Layout: In Normal Mode, 2-column grid with Suggestions in the corner/side */}
+              {/* Stage Layout: In Normal Mode, 2-column grid with Suggestions in the corner/side (adapts seamlessly when playlist pushes the stage left) */}
               {!isStudioMode ? (
-                <div className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                <div className={`w-full transition-all duration-300 ease-out ${
+                  isPlaylistOpen 
+                    ? 'flex flex-col xl:grid xl:grid-cols-12 gap-5 items-start max-w-full' 
+                    : 'grid grid-cols-1 lg:grid-cols-12 gap-5 items-start max-w-7xl'
+                }`}>
                   {/* Main Video Player */}
-                  <div className="w-full lg:col-span-8 xl:col-span-8 flex flex-col gap-2">
+                  <div className={`w-full flex flex-col gap-2 transition-all duration-300 ${
+                    isPlaylistOpen ? 'xl:col-span-8 2xl:col-span-8' : 'lg:col-span-8 xl:col-span-8'
+                  }`}>
                     <KaraokePlayer
                       currentSong={currentSong}
                       onChangeSong={() => {
@@ -540,14 +549,17 @@ export function App() {
                       syncEvent={syncEvent}
                       onBroadcastSync={handleBroadcastSync}
                       playlistCount={activePlaylist.length}
-                      onOpenPlaylist={() => setIsPlaylistOpen(true)}
+                      isPlaylistOpen={isPlaylistOpen}
+                      onOpenPlaylist={() => setIsPlaylistOpen(prev => !prev)}
                       onPlayNextSong={handlePlayNextSong}
                       onSongEnded={handleSongEnded}
                     />
                   </div>
 
-                  {/* Corner Suggestions Panel (Only visible in normal mode as requested) */}
-                  <div className="w-full lg:col-span-4 xl:col-span-4 flex flex-col gap-3">
+                  {/* Corner Suggestions Panel */}
+                  <div className={`w-full flex flex-col gap-3 transition-all duration-300 ${
+                    isPlaylistOpen ? 'xl:col-span-4 2xl:col-span-4' : 'lg:col-span-4 xl:col-span-4'
+                  }`}>
                     <RelatedSuggestions
                       currentSong={currentSong}
                       onSelectSong={handleSelectSong}
@@ -556,29 +568,32 @@ export function App() {
                   </div>
                 </div>
               ) : (
-                /* Studio Mode: Full stage width without side suggestions */
-                <KaraokePlayer
-                  currentSong={currentSong}
-                  onChangeSong={() => {
-                    setCurrentSong(null);
-                    if (currentRoom) {
-                      socketService.syncVideoAction(currentRoom.id, 'change_song', null, 0, false, user || undefined);
-                      socketService.sendChatMessage('⏹ Removeu a música atual', 'system');
-                    }
-                  }}
-                  onSearchAlternative={handleSearchAlternative}
-                  onAutoSwitchSong={handleSelectSong}
-                  isStudioMode={isStudioMode}
-                  onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
-                  currentRoom={currentRoom}
-                  videoPalette={videoPalette}
-                  syncEvent={syncEvent}
-                  onBroadcastSync={handleBroadcastSync}
-                  playlistCount={activePlaylist.length}
-                  onOpenPlaylist={() => setIsPlaylistOpen(true)}
-                  onPlayNextSong={handlePlayNextSong}
-                  onSongEnded={handleSongEnded}
-                />
+                /* Studio Mode: Full stage width without side suggestions (smoothly pushed left when playlist is docked) */
+                <div className="w-full transition-all duration-300 ease-out">
+                  <KaraokePlayer
+                    currentSong={currentSong}
+                    onChangeSong={() => {
+                      setCurrentSong(null);
+                      if (currentRoom) {
+                        socketService.syncVideoAction(currentRoom.id, 'change_song', null, 0, false, user || undefined);
+                        socketService.sendChatMessage('⏹ Removeu a música atual', 'system');
+                      }
+                    }}
+                    onSearchAlternative={handleSearchAlternative}
+                    onAutoSwitchSong={handleSelectSong}
+                    isStudioMode={isStudioMode}
+                    onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
+                    currentRoom={currentRoom}
+                    videoPalette={videoPalette}
+                    syncEvent={syncEvent}
+                    onBroadcastSync={handleBroadcastSync}
+                    playlistCount={activePlaylist.length}
+                    isPlaylistOpen={isPlaylistOpen}
+                    onOpenPlaylist={() => setIsPlaylistOpen(prev => !prev)}
+                    onPlayNextSong={handlePlayNextSong}
+                    onSongEnded={handleSongEnded}
+                  />
+                </div>
               )}
             </div>
           ) : (
@@ -617,7 +632,7 @@ export function App() {
       </main>
 
       {/* Effects Panel at the bottom */}
-      <div className={`relative z-10 transition-all ${currentRoom ? 'md:pl-80' : ''}`}>
+      <div className={`relative z-10 transition-all duration-300 ease-out ${currentRoom ? 'md:pl-80' : ''} ${isPlaylistOpen ? 'md:pr-[380px] lg:pr-[420px]' : ''}`}>
         <EffectsPanel
           mics={mics}
           selectedMicId={selectedMicForEffects}

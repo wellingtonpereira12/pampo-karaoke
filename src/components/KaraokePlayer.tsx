@@ -31,6 +31,7 @@ interface KaraokePlayerProps {
   currentRoom?: Room | null;
   videoPalette?: VideoPalette | null;
   playlistCount?: number;
+  isPlaylistOpen?: boolean;
   onOpenPlaylist?: () => void;
   onPlayNextSong?: () => void;
   onSongEnded?: () => void;
@@ -59,6 +60,7 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
   currentRoom,
   videoPalette = null,
   playlistCount = 0,
+  isPlaylistOpen = false,
   onOpenPlaylist,
   onPlayNextSong,
   onSongEnded,
@@ -482,8 +484,12 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
           {onOpenPlaylist && (
             <button
               onClick={onOpenPlaylist}
-              title="Ver Playlist & Fila de Músicas [Atalho: P]"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-slate-900/80 hover:bg-pink-600/80 text-slate-200 hover:text-white text-xs font-semibold backdrop-blur border border-pink-500/40 hover:border-pink-400 transition shadow-sm group"
+              title={isPlaylistOpen ? "Recolher Playlist [Atalho: P]" : "Ver Playlist & Fila de Músicas [Atalho: P]"}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur border transition shadow-sm group ${
+                isPlaylistOpen
+                  ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white border-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.6)]'
+                  : 'bg-slate-900/80 hover:bg-pink-600/80 text-slate-200 hover:text-white border-pink-500/40 hover:border-pink-400'
+              }`}
             >
               <ListMusic className="w-3.5 h-3.5 text-pink-400 group-hover:scale-110 transition-transform" />
               <span className="hidden sm:inline">Fila</span>

@@ -164,18 +164,18 @@ export const PlaylistDrawer: React.FC<PlaylistDrawerProps> = ({
         </button>
       </aside>
 
-      {/* 2. Slide-over Backdrop */}
+      {/* 2. Slide-over Backdrop (Only on small mobile devices where side-by-side push isn't physically possible) */}
       {isOpen && (
         <div
           onClick={onClose}
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity animate-fadeIn"
+          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity animate-fadeIn"
         />
       )}
 
-      {/* 3. Slide-In Playlist Drawer */}
+      {/* 3. Slide-In Playlist Drawer (Docks cleanly on the right side) */}
       <aside
         aria-label="Painel de Fila de Reprodução"
-        className={`fixed top-0 right-0 bottom-0 z-50 w-full sm:w-[420px] max-w-[92vw] bg-[#0c0f18]/95 border-l border-pink-500/30 backdrop-blur-2xl shadow-[-15px_0_45px_rgba(0,0,0,0.8)] flex flex-col transition-transform duration-300 ease-out ${
+        className={`fixed top-0 right-0 bottom-0 z-40 w-full sm:w-[380px] lg:w-[420px] bg-[#0c0f18]/95 border-l border-pink-500/30 backdrop-blur-2xl shadow-[-15px_0_45px_rgba(0,0,0,0.8)] flex flex-col transition-transform duration-300 ease-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >

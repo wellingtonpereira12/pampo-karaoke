@@ -7,6 +7,7 @@ interface HeaderProps {
   onOpenSpeakerModal: () => void;
   onOpenRoomsModal: () => void;
   onOpenPlaylist?: () => void;
+  isPlaylistOpen?: boolean;
   playlistCount?: number;
   connectedMicCount: number;
   isFullscreen: boolean;
@@ -20,6 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSpeakerModal,
   onOpenRoomsModal,
   onOpenPlaylist,
+  isPlaylistOpen = false,
   playlistCount = 0,
   connectedMicCount,
   isFullscreen,
@@ -31,7 +33,11 @@ export const Header: React.FC<HeaderProps> = ({
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   return (
-    <header className="w-full bg-[#10131b]/95 border-b border-slate-800/80 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-40 backdrop-blur-md">
+    <header className={`w-full bg-[#10131b]/95 border-b border-slate-800/80 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-40 backdrop-blur-md transition-all duration-300 ease-out ${
+      isInRoom ? 'md:pl-80' : ''
+    } ${
+      isPlaylistOpen ? 'md:pr-[380px] lg:pr-[420px]' : ''
+    }`}>
       {/* Brand: Pampo Karaokê */}
       <div className="flex items-center gap-3">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white shadow-glow-purple">
@@ -60,8 +66,12 @@ export const Header: React.FC<HeaderProps> = ({
         {onOpenPlaylist && (
           <button
             onClick={onOpenPlaylist}
-            title="Ver Playlist & Fila de Músicas [Atalho: P]"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800/80 hover:bg-pink-600/20 border border-pink-500/30 hover:border-pink-500 text-pink-300 text-xs font-bold transition shadow-sm group"
+            title={isPlaylistOpen ? "Recolher Playlist [Atalho: P]" : "Ver Playlist & Fila de Músicas [Atalho: P]"}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition shadow-sm group ${
+              isPlaylistOpen
+                ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white border border-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.5)]'
+                : 'bg-slate-800/80 hover:bg-pink-600/20 border border-pink-500/30 hover:border-pink-500 text-pink-300'
+            }`}
           >
             <ListMusic className="w-4 h-4 text-pink-400 group-hover:scale-110 transition-transform" />
             <span className="hidden sm:inline">Playlist</span>
