@@ -649,6 +649,67 @@ export class AudioEngine {
     return maxLevel;
   }
 
+  /**
+   * Analyzes live vocal pitch & frequency distribution for reactive dynamic stage lighting
+   */
+  public getVoiceVibe(): {
+    overallLevel: number;        // 0 to 100
+    pitchRegister: 'low' | 'mid' | 'high'; // Grave / Médio / Agudo ("altitude vocal")
+    brightness: number;          // 0 to 1
+  } {
+    let maxLevel = 0;
+    let totalLow = 0;
+    let totalMid = 0;
+    let totalHigh = 0;
+    let activeMics = 0;
+
+    const freqBuffer = new Uint8Array(128);
+
+    this.micMap.forEach(mic => {
+      if (!mic.muted) {
+        const lvl = this.getMicLevel(mic.id);
+        if (lvl > maxLevel) maxLevel = lvl;
+
+        mic.analyserNode.getByteFrequencyData(freqBuffer);
+
+        // Low / Grave: bins 1 to 3 (~80Hz - 375Hz)
+        let low = 0;
+        for (let i = 1; i <= 3; i++) low += freqBuffer[i];
+        // Mid / Médio: bins 4 to 10 (~375Hz - 1800Hz)
+        let mid = 0;
+        for (let i = 4; i <= 10; i++) mid += freqBuffer[i];
+        // High / Agudo: bins 11 to 28 (~1800Hz - 5200Hz)
+        let high = 0;
+        for (let i = 11; i <= 28; i++) high += freqBuffer[i];
+
+        totalLow += low;
+        totalMid += mid;
+        totalHigh += high;
+        activeMics++;
+      }
+    });
+
+    if (maxLevel < 6 || activeMics === 0) {
+      return { overallLevel: 0, pitchRegister: 'mid', brightness: 0.5 };
+    }
+
+    const totalEnergy = totalLow + totalMid + totalHigh + 0.001;
+    const brightness = Math.min(1.0, (totalHigh * 1.6) / totalEnergy);
+
+    let pitchRegister: 'low' | 'mid' | 'high' = 'mid';
+    if (totalHigh > totalMid * 0.85 && totalHigh > totalLow) {
+      pitchRegister = 'high'; // Altitude alta / Agudos
+    } else if (totalLow > totalMid * 1.1 && totalLow > totalHigh) {
+      pitchRegister = 'low';  // Altitude baixa / Graves
+    }
+
+    return {
+      overallLevel: maxLevel,
+      pitchRegister,
+      brightness,
+    };
+  }
+
   public getAllMics(): ConnectedMicInfo[] {
     return Array.from(this.micMap.values()).map(mic => this.getMicInfo(mic));
   }

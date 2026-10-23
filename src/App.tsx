@@ -18,12 +18,14 @@ import { socketService } from './services/socketService';
 import { AudioEngine } from './audio/AudioEngine';
 import type { ConnectedMicInfo, EffectPresetId, EffectSettings, VideoItem } from './audio/types';
 import type { Room } from './types/room';
+import { extractPaletteFromImage, type VideoPalette } from './utils/colorExtractor';
 
 export function App() {
   const { user, isAuthModalOpen, closeAuthModal, openAuthModal } = useAuth();
   const [mics, setMics] = useState<ConnectedMicInfo[]>([]);
   const [selectedMicForEffects, setSelectedMicForEffects] = useState<string | null>(null);
   const [currentSong, setCurrentSong] = useState<VideoItem | null>(null);
+  const [videoPalette, setVideoPalette] = useState<VideoPalette | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Modals state
@@ -68,6 +70,25 @@ export function App() {
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
+
+  // Extract dynamic color palette from currently playing video (for Ambilight & Stage Lighting)
+  useEffect(() => {
+    if (!currentSong) {
+      setVideoPalette(null);
+      return;
+    }
+
+    let isSubscribed = true;
+    extractPaletteFromImage(currentSong.thumbnail, currentSong.title + currentSong.id).then(palette => {
+      if (isSubscribed) {
+        setVideoPalette(palette);
+      }
+    });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [currentSong?.id, currentSong?.thumbnail]);
 
   // Connect socket and handle synchronized events
   useEffect(() => {
@@ -415,7 +436,10 @@ export function App() {
   return (
     <div className="relative min-h-screen retro-80s-bg text-slate-100 flex flex-col justify-between selection:bg-pink-500 selection:text-slate-950 overflow-x-hidden">
       {/* 80s Disco Ball with Sweeping Light Beams & Concert Beat Flashes */}
-      <DiscoBall isPlaying={isVideoPlaying && !!currentSong} />
+      <DiscoBall 
+        isPlaying={isVideoPlaying && !!currentSong} 
+        videoPalette={videoPalette}
+      />
 
       {/* Retro 80s Perspective Floor Grid */}
       <div className="retro-perspective-grid" />
@@ -451,12 +475,19 @@ export function App() {
         />
       )}
 
-      {/* Main Content Area (shifted right if in room) */}
-      <main className={`relative z-10 flex-1 flex flex-col items-center justify-start w-full mx-auto px-2 sm:px-4 py-2 transition-all duration-300 ${
-        isStudioMode && currentSong ? 'max-w-[99vw] md:px-4' : 'max-w-7xl'
-      } ${
-        currentRoom ? 'md:pl-80' : ''
-      }`}>
+      {/* Main Content Area (shifted right if in room, with dynamic video ambilight in studio mode) */}
+      <main 
+        className={`relative z-10 flex-1 flex flex-col items-center justify-start w-full mx-auto px-2 sm:px-4 py-2 transition-all duration-700 ${
+          isStudioMode && currentSong ? 'max-w-[99vw] md:px-4' : 'max-w-7xl'
+        } ${
+          currentRoom ? 'md:pl-80' : ''
+        }`}
+        style={
+          isStudioMode && videoPalette ? {
+            background: `radial-gradient(ellipse at 50% 35%, rgba(${videoPalette.primary[0]}, ${videoPalette.primary[1]}, ${videoPalette.primary[2]}, 0.14) 0%, rgba(${videoPalette.secondary[0]}, ${videoPalette.secondary[1]}, ${videoPalette.secondary[2]}, 0.07) 55%, transparent 80%)`,
+          } : undefined
+        }
+      >
         {/* Microphone Rack (Visible in normal mode or when no song is playing) */}
         {(!isStudioMode || !currentSong) && (
           <MicRack
@@ -505,6 +536,7 @@ export function App() {
                       isStudioMode={isStudioMode}
                       onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
                       currentRoom={currentRoom}
+                      videoPalette={videoPalette}
                       syncEvent={syncEvent}
                       onBroadcastSync={handleBroadcastSync}
                       playlistCount={activePlaylist.length}
@@ -539,6 +571,7 @@ export function App() {
                   isStudioMode={isStudioMode}
                   onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
                   currentRoom={currentRoom}
+                  videoPalette={videoPalette}
                   syncEvent={syncEvent}
                   onBroadcastSync={handleBroadcastSync}
                   playlistCount={activePlaylist.length}

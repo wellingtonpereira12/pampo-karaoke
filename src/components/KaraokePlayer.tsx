@@ -17,6 +17,7 @@ import {
 import confetti from 'canvas-confetti';
 import type { VideoItem } from '../audio/types';
 import type { Room } from '../types/room';
+import type { VideoPalette } from '../utils/colorExtractor';
 import { ensureYouTubeApi } from '../utils/youtubeApi';
 import { searchKaraokeVideos } from '../services/youtubeService';
 
@@ -28,6 +29,7 @@ interface KaraokePlayerProps {
   isStudioMode?: boolean;
   onToggleStudioMode?: () => void;
   currentRoom?: Room | null;
+  videoPalette?: VideoPalette | null;
   playlistCount?: number;
   onOpenPlaylist?: () => void;
   onPlayNextSong?: () => void;
@@ -55,6 +57,7 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
   isStudioMode = false,
   onToggleStudioMode,
   currentRoom,
+  videoPalette = null,
   playlistCount = 0,
   onOpenPlaylist,
   onPlayNextSong,
@@ -419,11 +422,17 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
   return (
     <div 
       ref={containerRef}
-      className={`relative w-full mx-auto overflow-hidden bg-black border transition-all duration-300 ${
+      className={`relative w-full mx-auto overflow-hidden bg-black border transition-all duration-500 ${
         isStudioMode 
           ? 'max-w-none rounded-2xl border-pink-500/50 shadow-[0_0_50px_rgba(236,72,153,0.3)]' 
           : 'max-w-6xl rounded-3xl border-slate-800 shadow-2xl'
       }`}
+      style={
+        isStudioMode && videoPalette ? {
+          borderColor: `rgba(${videoPalette.primary[0]}, ${videoPalette.primary[1]}, ${videoPalette.primary[2]}, 0.85)`,
+          boxShadow: `0 0 50px rgba(${videoPalette.primary[0]}, ${videoPalette.primary[1]}, ${videoPalette.primary[2]}, 0.45), 0 0 100px rgba(${videoPalette.secondary[0]}, ${videoPalette.secondary[1]}, ${videoPalette.secondary[2]}, 0.25)`
+        } : undefined
+      }
     >
       {/* Top Floating Bar */}
       <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-3 sm:p-4 bg-gradient-to-b from-black/90 via-black/50 to-transparent pointer-events-auto">
