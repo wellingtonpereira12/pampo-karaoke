@@ -394,6 +394,81 @@ app.get('/api/suggestions', async (req, res) => {
   }
 });
 
+// Dynamic popular karaoke hits sets endpoint with reloadable categories
+const POPULAR_SEARCH_PRESETS = [
+  { label: '🌟 Clássicos Sertanejos', query: 'karaoke sertanejo modao maiores sucessos instrumental' },
+  { label: '🎸 Rock Nacional 80 & 90', query: 'karaoke rock nacional anos 80 90' },
+  { label: '🥁 Pagode, Samba & MPB', query: 'karaoke pagode samba raca negra pericles' },
+  { label: '✨ Pop & Clássicos Internacionais', query: 'karaoke greatest pop rock hits lyrics' },
+  { label: '🔥 Modão & Boteco', query: 'karaoke modao leandro leonardo zeze bruno marrone' },
+  { label: '🎤 Hits Inesquecíveis', query: 'karaoke brasil mais tocadas todas as epocas' },
+];
+
+let globalPopularPresetIndex = 0;
+
+app.get('/api/popular-hits', async (req, res) => {
+  try {
+    const pageParam = req.query.page;
+    let categoryIndex = 0;
+    if (pageParam !== undefined && pageParam !== null && !isNaN(parseInt(String(pageParam), 10))) {
+      categoryIndex = Math.abs(parseInt(String(pageParam), 10)) % POPULAR_SEARCH_PRESETS.length;
+    } else {
+      categoryIndex = (globalPopularPresetIndex++) % POPULAR_SEARCH_PRESETS.length;
+    }
+
+    const preset = POPULAR_SEARCH_PRESETS[categoryIndex];
+
+    const r = await ytSearch(preset.query);
+    const candidates = [];
+    const seen = new Set();
+
+    if (r && Array.isArray(r.videos)) {
+      for (const v of r.videos) {
+        if (!v || !v.videoId) continue;
+        if (seen.has(v.videoId)) continue;
+        seen.add(v.videoId);
+
+        const titleLower = v.title.toLowerCase();
+        // Must be a karaoke track and not a massive multi-hour compilation
+        if (!/karaok[eê]|karaoketa|playback|instrumental|letra/i.test(titleLower)) continue;
+        if (v.seconds && (v.seconds > 660 || v.seconds < 90)) continue;
+
+        candidates.push(v);
+        if (candidates.length >= 14) break;
+      }
+    }
+
+    // Verify embeddability via oEmbed
+    const verified = await Promise.all(
+      candidates.map(async v => {
+        const embeddable = await isVideoEmbeddable(v.videoId);
+        return { video: v, embeddable };
+      })
+    );
+
+    const playable = verified.filter(c => c.embeddable).map(c => c.video).slice(0, 8);
+
+    const songs = playable.map(v => ({
+      id: v.videoId,
+      title: v.title,
+      channel: v.author?.name || 'Karaokê',
+      duration: v.timestamp || '',
+      thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
+      url: v.url,
+    }));
+
+    return res.json({
+      category: preset.label,
+      page: categoryIndex,
+      totalPages: POPULAR_SEARCH_PRESETS.length,
+      songs,
+    });
+  } catch (err) {
+    console.error('Popular hits error:', err);
+    return res.status(500).json({ error: err.message, songs: [] });
+  }
+});
+
 // Serve frontend dist if available
 const distPath = path.join(__dirname, 'dist');
 app.use(express.static(distPath));

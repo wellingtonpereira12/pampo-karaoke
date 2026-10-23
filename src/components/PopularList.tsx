@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Play, Sparkles, Plus, Check } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Play, Sparkles, Plus, Check, RotateCw } from 'lucide-react';
 import type { VideoItem } from '../audio/types';
 import { POPULAR_KARAOKE_HITS } from '../services/youtubeService';
 
@@ -12,7 +12,32 @@ export const PopularList: React.FC<PopularListProps> = ({
   onSelectSong,
   onAddToPlaylist,
 }) => {
+  const [songs, setSongs] = useState<VideoItem[]>(POPULAR_KARAOKE_HITS);
+  const [category, setCategory] = useState<string>('🌟 Clássicos');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [addedMap, setAddedMap] = useState<Record<string, boolean>>({});
+  const pageRef = useRef<number>(0);
+
+  const handleReload = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    pageRef.current += 1;
+
+    try {
+      const res = await fetch(`/api/popular-hits?page=${pageRef.current}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.songs) && data.songs.length > 0) {
+          setSongs(data.songs);
+          if (data.category) setCategory(data.category);
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar novos clássicos:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleQueue = (e: React.MouseEvent, song: VideoItem) => {
     e.stopPropagation();
@@ -27,23 +52,47 @@ export const PopularList: React.FC<PopularListProps> = ({
 
   return (
     <div className="w-full max-w-5xl mx-auto mt-6 mb-10 px-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-emerald-400" />
-          Clássicos Mais Pedidos do Karaokê
-        </h3>
-        <span className="text-xs text-slate-500">Clique para cantar ou adicione à sua playlist</span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-400" />
+            Clássicos Mais Pedidos do Karaokê
+          </h3>
+          {category && (
+            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-pink-500/15 border border-pink-500/30 text-pink-300 shadow-sm animate-fadeIn">
+              {category}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2.5 sm:gap-3 self-end sm:self-auto">
+          <span className="text-xs text-slate-400 hidden md:inline">
+            Clique para cantar ou adicione à sua playlist
+          </span>
+
+          {/* Botão de Reload / Recarregar */}
+          <button
+            type="button"
+            onClick={handleReload}
+            disabled={isLoading}
+            title="Recarregar outros clássicos e dicas do karaokê"
+            className="px-2.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-pink-600/20 text-slate-300 hover:text-pink-300 border border-slate-700 hover:border-pink-500/50 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 shadow-sm group cursor-pointer"
+          >
+            <RotateCw className={`w-3.5 h-3.5 text-pink-400 ${isLoading ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+            <span>Recarregar</span>
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
-        {POPULAR_KARAOKE_HITS.map(song => {
+      <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5 transition-opacity duration-300 ${isLoading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+        {songs.map(song => {
           const isAdded = !!addedMap[song.id];
 
           return (
             <div
               key={song.id}
               onClick={() => onSelectSong(song)}
-              className="group relative cursor-pointer rounded-2xl overflow-hidden bg-[#131622]/90 border border-slate-800/80 hover:border-pink-500/70 transition-all duration-200 flex flex-col hover:scale-[1.02] shadow-lg"
+              className="group relative cursor-pointer rounded-2xl overflow-hidden bg-[#131622]/90 border border-slate-800/80 hover:border-pink-500/70 transition-all duration-200 flex flex-col hover:scale-[1.02] shadow-lg animate-fadeIn"
             >
               {/* Thumbnail */}
               <div className="relative aspect-video w-full bg-black overflow-hidden">
