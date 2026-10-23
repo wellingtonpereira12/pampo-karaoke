@@ -11,7 +11,35 @@
     "start": "node server.js",
     "preview": "vite preview",
     "electron": "electron electron/main.cjs",
-    "desktop": "npm run build && electron electron/main.cjs"
+    "desktop": "electron electron/main.cjs",
+    "pack:win": "npm run build && electron-builder --win --dir",
+    "dist:win": "npm run build && electron-builder --win"
+  },
+  "build": {
+    "appId": "tech.pampo.karaoke",
+    "productName": "Pampo Karaokê",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pampo Karaokê"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "server.js",
+      "package.json"
+    ]
   },
   "dependencies": {
     "autoprefixer": "^10.6.1",
@@ -36,6 +64,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^41.7.1",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.8.0",
     "vite": "^6.2.0"
   }

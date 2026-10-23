@@ -62,7 +62,8 @@ async function ensureServerRunning() {
 
   console.log(`[Pampo Desktop] Starting embedded backend on ${SERVER_URL}...`);
   const serverScript = path.join(__dirname, '..', 'server.js');
-  serverProcess = spawn(process.execPath, [serverScript], {
+  const nodeExe = process.platform === 'win32' ? 'node.exe' : 'node';
+  serverProcess = spawn(nodeExe, [serverScript], {
     cwd: path.join(__dirname, '..'),
     env: { ...process.env, PORT: String(SERVER_PORT) },
     stdio: 'inherit',
@@ -88,7 +89,7 @@ function createWindow() {
     minHeight: 620,
     title: 'Pampo Karaokê - Edição Estúdio Desktop',
     backgroundColor: '#0c0e14',
-    show: false,
+    show: true, // Display window immediately
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -111,13 +112,23 @@ function createWindow() {
     callback(true);
   });
 
-  // Load target URL (Dev server, local server, or production)
+  // Load target URL (Dev server, local server, or fallback to live site)
   const targetUrl = process.env.VITE_DEV_SERVER_URL || SERVER_URL;
-  mainWindow.loadURL(targetUrl);
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    mainWindow.focus();
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.warn(`[Pampo Desktop] Page failed to load (${errorCode}: ${errorDescription}), retrying...`);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.loadURL(targetUrl).catch(() => {
+          // If local server is not accessible, load online cloud version seamlessly
+          mainWindow.loadURL('https://karaoke.pampo.tech').catch(() => {});
+        });
+      }
+    }, 1000);
+  });
+
+  mainWindow.loadURL(targetUrl).catch(() => {
+    mainWindow.loadURL('https://karaoke.pampo.tech').catch(() => {});
   });
 
   mainWindow.on('closed', () => {
