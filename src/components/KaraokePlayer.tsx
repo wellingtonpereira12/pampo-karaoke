@@ -1,7 +1,21 @@
 import React, { useRef, useMemo, useState, useEffect } from 'react';
-import { Maximize, Minimize, RotateCcw, Search, Sparkles, ExternalLink, RectangleHorizontal } from 'lucide-react';
+import { 
+  Maximize, 
+  Minimize, 
+  RotateCcw, 
+  Search, 
+  Sparkles, 
+  ExternalLink, 
+  RectangleHorizontal,
+  Play,
+  Pause,
+  FastForward,
+  Rewind,
+  Users
+} from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { VideoItem } from '../audio/types';
+import type { Room } from '../types/room';
 
 interface KaraokePlayerProps {
   currentSong: VideoItem | null;
@@ -9,6 +23,9 @@ interface KaraokePlayerProps {
   onSearchAlternative?: (title: string) => void;
   isStudioMode?: boolean;
   onToggleStudioMode?: () => void;
+  currentRoom?: Room | null;
+  syncEvent?: { action: string; currentTime?: number; isPlaying?: boolean; timestamp: number } | null;
+  onBroadcastSync?: (action: 'play' | 'pause' | 'seek', currentTime?: number, isPlaying?: boolean) => void;
 }
 
 export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({ 
@@ -17,9 +34,18 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
   onSearchAlternative,
   isStudioMode = false,
   onToggleStudioMode,
+  currentRoom,
+  syncEvent,
+  onBroadcastSync,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const currentTimeRef = useRef<number>(0);
+  const isRemoteSyncRef = useRef<boolean>(false);
+
   const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(true);
+  const [playbackTimeFormatted, setPlaybackTimeFormatted] = useState<string>('0:00');
 
   // Sync fullscreen state of the player container
   useEffect(() => {
@@ -30,7 +56,129 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Keyboard shortcut: 'T' toggles studio/theater mode, 'F' toggles fullscreen
+  // PostMessage helper for YouTube iframe API
+  const sendIframeCommand = (func: string, args: unknown = '') => {
+    try {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({
+            event: 'command',
+            func,
+            args,
+          }),
+          '*'
+        );
+      }
+    } catch (e) {
+      console.warn('Failed to send command to YouTube iframe:', e);
+    }
+  };
+
+  const handlePlay = (fromRemote = false) => {
+    setIsPlaying(true);
+    sendIframeCommand('playVideo');
+    if (!fromRemote && onBroadcastSync) {
+      onBroadcastSync('play', currentTimeRef.current, true);
+    }
+  };
+
+  const handlePause = (fromRemote = false) => {
+    setIsPlaying(false);
+    sendIframeCommand('pauseVideo');
+    if (!fromRemote && onBroadcastSync) {
+      onBroadcastSync('pause', currentTimeRef.current, false);
+    }
+  };
+
+  const handleTogglePlayPause = () => {
+    if (isPlaying) {
+      handlePause(false);
+    } else {
+      handlePlay(false);
+    }
+  };
+
+  const handleSeek = (seconds: number, fromRemote = false) => {
+    const target = Math.max(0, seconds);
+    currentTimeRef.current = target;
+    sendIframeCommand('seekTo', [target, true]);
+    if (!fromRemote && onBroadcastSync) {
+      onBroadcastSync('seek', target, isPlaying);
+    }
+  };
+
+  const handleSeekDelta = (delta: number) => {
+    handleSeek(currentTimeRef.current + delta, false);
+  };
+
+  // Handle incoming synchronization events from other room participants
+  useEffect(() => {
+    if (!syncEvent) return;
+    isRemoteSyncRef.current = true;
+
+    if (syncEvent.action === 'play') {
+      setIsPlaying(true);
+      sendIframeCommand('playVideo');
+      if (syncEvent.currentTime !== undefined && Math.abs(currentTimeRef.current - syncEvent.currentTime) > 2) {
+        currentTimeRef.current = syncEvent.currentTime;
+        sendIframeCommand('seekTo', [syncEvent.currentTime, true]);
+      }
+    } else if (syncEvent.action === 'pause') {
+      setIsPlaying(false);
+      sendIframeCommand('pauseVideo');
+      if (syncEvent.currentTime !== undefined) {
+        currentTimeRef.current = syncEvent.currentTime;
+        sendIframeCommand('seekTo', [syncEvent.currentTime, true]);
+      }
+    } else if (syncEvent.action === 'seek' && syncEvent.currentTime !== undefined) {
+      currentTimeRef.current = syncEvent.currentTime;
+      sendIframeCommand('seekTo', [syncEvent.currentTime, true]);
+      if (syncEvent.isPlaying !== undefined) {
+        setIsPlaying(syncEvent.isPlaying);
+        sendIframeCommand(syncEvent.isPlaying ? 'playVideo' : 'pauseVideo');
+      }
+    }
+
+    const t = setTimeout(() => {
+      isRemoteSyncRef.current = false;
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [syncEvent]);
+
+  // Listen for YouTube player events sent via postMessage
+  useEffect(() => {
+    const formatTime = (secs: number) => {
+      const m = Math.floor(secs / 60);
+      const s = Math.floor(secs % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    };
+
+    const handleWindowMessage = (e: MessageEvent) => {
+      try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (data?.event === 'infoDelivery' && data?.info?.currentTime !== undefined) {
+          currentTimeRef.current = data.info.currentTime;
+          setPlaybackTimeFormatted(formatTime(data.info.currentTime));
+        }
+
+        // On native iframe player state change (1: playing, 2: paused)
+        if (data?.event === 'onStateChange' && !isRemoteSyncRef.current) {
+          if (data.info === 1) {
+            setIsPlaying(true);
+            if (onBroadcastSync) onBroadcastSync('play', currentTimeRef.current, true);
+          } else if (data.info === 2) {
+            setIsPlaying(false);
+            if (onBroadcastSync) onBroadcastSync('pause', currentTimeRef.current, false);
+          }
+        }
+      } catch {}
+    };
+
+    window.addEventListener('message', handleWindowMessage);
+    return () => window.removeEventListener('message', handleWindowMessage);
+  }, [onBroadcastSync]);
+
+  // Keyboard shortcuts: Space (play/pause), Left/Right (seek -5s/+5s), 'T' (theater), 'F' (fullscreen)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -38,7 +186,16 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
         return;
       }
 
-      if (e.key === 't' || e.key === 'T') {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleTogglePlayPause();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleSeekDelta(-5);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleSeekDelta(5);
+      } else if (e.key === 't' || e.key === 'T') {
         e.preventDefault();
         onToggleStudioMode?.();
       } else if (e.key === 'f' || e.key === 'F') {
@@ -49,7 +206,7 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onToggleStudioMode]);
+  }, [isPlaying, onToggleStudioMode]);
 
   const embedUrl = useMemo(() => {
     if (!currentSong) return '';
@@ -92,7 +249,6 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
 
   const handleAlternative = () => {
     if (onSearchAlternative) {
-      // Clean title from extra tags
       const cleanTitle = currentSong.title
         .replace(/\(Karaok[eê].*?\)/gi, '')
         .replace(/\[.*?\]/g, '')
@@ -114,11 +270,62 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
     >
       {/* Top Floating Control Bar */}
       <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-3 sm:p-4 bg-gradient-to-b from-black/90 via-black/50 to-transparent pointer-events-auto">
-        <div className="flex items-center gap-2 truncate max-w-[50%] sm:max-w-[65%]">
+        <div className="flex items-center gap-2 truncate max-w-[45%] sm:max-w-[55%]">
           <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0" />
           <h3 className="text-sm md:text-base font-semibold text-white truncate drop-shadow">
             {currentSong.title}
           </h3>
+          {currentRoom && (
+            <span className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-[11px] font-semibold shrink-0">
+              <Users className="w-3 h-3" />
+              Sincronizado na Sala
+            </span>
+          )}
+        </div>
+
+        {/* Central Synchronized Playback Controls */}
+        <div className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/90 backdrop-blur border border-slate-700/80 shadow-lg">
+          {/* Rewind -10s */}
+          <button
+            onClick={() => handleSeekDelta(-10)}
+            title="Voltar 10 segundos (Sincronizado para todos) [←]"
+            className="p-1.5 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 active:scale-95 transition"
+          >
+            <Rewind className="w-4 h-4" />
+          </button>
+
+          {/* Play / Pause Toggle Button */}
+          <button
+            onClick={handleTogglePlayPause}
+            title={isPlaying ? "Pausar para todos na sala [Espaço]" : "Dar Play para todos na sala [Espaço]"}
+            className="p-1.5 sm:px-2.5 rounded-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold text-xs flex items-center gap-1 shadow-[0_0_12px_rgba(236,72,153,0.5)] active:scale-95 transition"
+          >
+            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
+            <span className="hidden sm:inline">{isPlaying ? 'Pausar' : 'Play'}</span>
+          </button>
+
+          {/* Fast Forward +10s */}
+          <button
+            onClick={() => handleSeekDelta(10)}
+            title="Avançar 10 segundos (Sincronizado para todos) [→]"
+            className="p-1.5 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 active:scale-95 transition"
+          >
+            <FastForward className="w-4 h-4" />
+          </button>
+
+          {/* Restart 0s */}
+          <button
+            onClick={() => handleSeek(0)}
+            title="Recomeçar do início (Sincronizado)"
+            className="p-1.5 rounded-full text-slate-400 hover:text-amber-400 hover:bg-slate-800 active:scale-95 transition"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Current Time Display */}
+          <span className="text-[11px] font-mono text-slate-400 px-1 hidden sm:inline">
+            {playbackTimeFormatted}
+          </span>
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -178,6 +385,7 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
           : 'aspect-video min-h-[380px] md:min-h-[520px] lg:min-h-[620px]'
       }`}>
         <iframe
+          ref={iframeRef}
           src={embedUrl}
           title={currentSong.title}
           referrerPolicy="strict-origin-when-cross-origin"
@@ -199,6 +407,15 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-pink-400">
                 <RectangleHorizontal className="w-3 h-3" />
                 Modo Estúdio Ativo
+              </span>
+            </>
+          )}
+          {currentRoom && (
+            <>
+              <span>•</span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-400">
+                <Users className="w-3 h-3" />
+                Sala: {currentRoom.name}
               </span>
             </>
           )}

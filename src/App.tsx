@@ -31,6 +31,7 @@ export function App() {
   
   // Online Room State (Discord Style)
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
+  const [syncEvent, setSyncEvent] = useState<{ action: string; currentTime?: number; isPlaying?: boolean; timestamp: number } | null>(null);
   
   const [masterVolume, setMasterVolume] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -56,9 +57,27 @@ export function App() {
       });
     };
 
-    const handleSyncVideo = ({ action, song }: { action: string; song: VideoItem | null }) => {
-      if (action === 'change_song' && song) {
+    const handleSyncVideo = ({ 
+      action, 
+      song, 
+      currentTime, 
+      isPlaying,
+    }: { 
+      action: string; 
+      song: VideoItem | null; 
+      currentTime?: number; 
+      isPlaying?: boolean; 
+      user?: unknown; 
+    }) => {
+      if (action === 'change_song') {
         setCurrentSong(song);
+      } else {
+        setSyncEvent({
+          action,
+          currentTime,
+          isPlaying,
+          timestamp: Date.now(),
+        });
       }
     };
 
@@ -191,6 +210,21 @@ export function App() {
   const handleSearchAlternative = (title: string) => {
     setCurrentSong(null);
     setSearchQuery(title);
+    if (currentRoom) {
+      socketService.syncVideoAction(currentRoom.id, 'change_song', null, 0, false, user || undefined);
+    }
+  };
+
+  const handleBroadcastSync = (action: 'play' | 'pause' | 'seek', currentTime?: number, isPlaying?: boolean) => {
+    if (!currentRoom) return;
+    socketService.syncVideoAction(currentRoom.id, action, currentSong, currentTime, isPlaying, user || undefined);
+    
+    const actionLabel = action === 'play'
+      ? '▶ Deu play no vídeo'
+      : action === 'pause'
+        ? '⏸ Pausou o vídeo'
+        : `⏩ Pulou o vídeo para ${Math.floor(currentTime || 0)}s`;
+    socketService.sendChatMessage(actionLabel, 'system');
   };
 
   // Room Joined
@@ -198,6 +232,14 @@ export function App() {
     setCurrentRoom(room);
     if (room.currentSong) {
       setCurrentSong(room.currentSong);
+      if (room.currentTime) {
+        setSyncEvent({
+          action: 'seek',
+          currentTime: room.currentTime,
+          isPlaying: room.isPlaying,
+          timestamp: Date.now(),
+        });
+      }
     }
     // Stream mic audio to room
     const engine = AudioEngine.getInstance();
@@ -272,13 +314,22 @@ export function App() {
                 <SearchBar onSelectSong={handleSelectSong} isCompact />
               </div>
 
-              {/* Large YouTube Karaoke Stage Display */}
+              {/* Large YouTube Karaoke Stage Display with Room Sync */}
               <KaraokePlayer
                 currentSong={currentSong}
-                onChangeSong={() => setCurrentSong(null)}
+                onChangeSong={() => {
+                  setCurrentSong(null);
+                  if (currentRoom) {
+                    socketService.syncVideoAction(currentRoom.id, 'change_song', null, 0, false, user || undefined);
+                    socketService.sendChatMessage('⏹ Removeu a música atual', 'system');
+                  }
+                }}
                 onSearchAlternative={handleSearchAlternative}
                 isStudioMode={isStudioMode}
                 onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
+                currentRoom={currentRoom}
+                syncEvent={syncEvent}
+                onBroadcastSync={handleBroadcastSync}
               />
             </div>
           ) : (
