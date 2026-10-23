@@ -30,6 +30,9 @@ const rooms = new Map();
 
 // Helper to determine base redirect URI
 function getRedirectUri(req) {
+  if (process.env.GOOGLE_REDIRECT_URI) {
+    return process.env.GOOGLE_REDIRECT_URI;
+  }
   const host = req.get('x-forwarded-host') || req.get('host') || 'karaoke.pampo.tech';
   const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
   return `${proto}://${host}/api/auth/google/callback`;
