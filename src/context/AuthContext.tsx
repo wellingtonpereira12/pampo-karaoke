@@ -17,6 +17,17 @@ const STORAGE_KEY = 'pampo_karaoke_user';
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
     try {
+      // Check if redirected from Google OAuth with ?oauth_user=...
+      if (typeof window !== 'undefined' && window.location.search) {
+        const params = new URLSearchParams(window.location.search);
+        const oauthParam = params.get('oauth_user');
+        if (oauthParam) {
+          const parsed = JSON.parse(decodeURIComponent(oauthParam));
+          window.history.replaceState({}, document.title, window.location.pathname);
+          return parsed;
+        }
+      }
+
       const saved = localStorage.getItem(STORAGE_KEY);
       return saved ? JSON.parse(saved) : null;
     } catch {

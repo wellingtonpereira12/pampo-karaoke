@@ -19,6 +19,8 @@ const io = new SocketIOServer(server, {
 });
 
 const PORT = process.env.PORT || 3130;
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 
 app.use(cors());
 app.use(express.json());
@@ -26,15 +28,143 @@ app.use(express.json());
 // In-memory Room State
 const rooms = new Map();
 
+// Helper to determine base redirect URI
+function getRedirectUri(req) {
+  const host = req.get('x-forwarded-host') || req.get('host') || 'karaoke.pampo.tech';
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
+  return `${proto}://${host}/api/auth/google/callback`;
+}
+
 // Health check endpoint for Docker & CI/CD pipeline
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'pampo-karaoke',
     activeRooms: rooms.size,
+    googleOAuthConfigured: Boolean(GOOGLE_CLIENT_ID),
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });
+});
+
+// Official Google OAuth 2.0 Auth Redirect
+app.get('/api/auth/google', (req, res) => {
+  if (!GOOGLE_CLIENT_ID) {
+    return res.status(500).send('Google Client ID não configurado no servidor.');
+  }
+
+  const redirectUri = getRedirectUri(req);
+  const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20email%20profile&access_type=offline&prompt=select_account`;
+
+  return res.redirect(googleAuthUrl);
+});
+
+// Official Google OAuth 2.0 Callback
+app.get('/api/auth/google/callback', async (req, res) => {
+  try {
+    const { code, error } = req.query;
+
+    if (error) {
+      console.warn('Google auth error received from Google:', error);
+      return res.send(`
+        <!doctype html>
+        <html>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'GOOGLE_AUTH_ERROR', error: '${error}' }, '*');
+                window.close();
+              } else {
+                window.location.href = '/?error=${encodeURIComponent(String(error))}';
+              }
+            </script>
+            <p>Erro no login com Google. Fechando janela...</p>
+          </body>
+        </html>
+      `);
+    }
+
+    if (!code) {
+      return res.redirect('/?error=no_code_from_google');
+    }
+
+    const redirectUri = getRedirectUri(req);
+
+    // Exchange authorization code for Google access token
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code: String(code),
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) {
+      console.error('Google token exchange failed:', tokenData);
+      return res.send(`
+        <!doctype html>
+        <html>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'GOOGLE_AUTH_ERROR', error: 'Falha na autenticação do Google' }, '*');
+                window.close();
+              } else {
+                window.location.href = '/?error=google_token_exchange_failed';
+              }
+            </script>
+            <p>Falha ao validar conta no Google. Fechando janela...</p>
+          </body>
+        </html>
+      `);
+    }
+
+    // Fetch official Google profile info (name, email, verified picture)
+    const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+    const googleUser = await userInfoRes.json();
+
+    if (!googleUser.email) {
+      return res.redirect('/?error=no_google_email');
+    }
+
+    const safeUser = {
+      id: `google-${googleUser.id || Math.random().toString(36).substr(2, 9)}`,
+      name: googleUser.name || googleUser.email.split('@')[0],
+      email: googleUser.email.toLowerCase(),
+      avatar: googleUser.picture || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(googleUser.email)}`,
+    };
+
+    // Return HTML that communicates with popup opener or redirects
+    res.send(`
+      <!doctype html>
+      <html>
+        <head><title>Login Google Concluído</title></head>
+        <body style="background:#0c0e14;color:#fff;font-family:sans-serif;text-align:center;padding-top:40px;">
+          <p>Autenticado com sucesso no Google! Entrando no Pampo Karaokê...</p>
+          <script>
+            const userPayload = ${JSON.stringify(safeUser)};
+            if (window.opener) {
+              window.opener.postMessage({ type: 'GOOGLE_AUTH_SUCCESS', user: userPayload }, '*');
+              window.close();
+            } else {
+              localStorage.setItem('pampo_karaoke_user', JSON.stringify(userPayload));
+              window.location.href = '/';
+            }
+          </script>
+        </body>
+      </html>
+    `);
+  } catch (err) {
+    console.error('Callback error:', err);
+    res.redirect('/?error=oauth_internal_error');
+  }
 });
 
 // YouTube karaoke search endpoint
@@ -247,7 +377,6 @@ io.on('connection', socket => {
       if (room.participants.size === 0) {
         rooms.delete(currentRoomId);
       } else {
-        // Reassign host if host left
         const remaining = Array.from(room.participants.values());
         if (!remaining.some(p => p.isHost)) {
           remaining[0].isHost = true;
