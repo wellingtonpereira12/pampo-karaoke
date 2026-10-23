@@ -14,6 +14,7 @@ export function App() {
   const [mics, setMics] = useState<ConnectedMicInfo[]>([]);
   const [selectedMicForEffects, setSelectedMicForEffects] = useState<string | null>(null);
   const [currentSong, setCurrentSong] = useState<VideoItem | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isAddInputModalOpen, setIsAddInputModalOpen] = useState(false);
   const [isSpeakerModalOpen, setIsSpeakerModalOpen] = useState(false);
   const [masterVolume, setMasterVolume] = useState(1.0);
@@ -100,6 +101,11 @@ export function App() {
     setMics(engine.getAllMics());
   };
 
+  const handleSearchAlternative = (title: string) => {
+    setCurrentSong(null);
+    setSearchQuery(title);
+  };
+
   return (
     <div className="min-h-screen bg-[#0c0e14] text-slate-100 flex flex-col justify-between selection:bg-emerald-500 selection:text-slate-950">
       {/* Header */}
@@ -138,6 +144,7 @@ export function App() {
               <KaraokePlayer
                 currentSong={currentSong}
                 onChangeSong={() => setCurrentSong(null)}
+                onSearchAlternative={handleSearchAlternative}
               />
             </div>
           ) : (
@@ -152,7 +159,10 @@ export function App() {
                 </p>
               </div>
 
-              <SearchBar onSelectSong={setCurrentSong} />
+              <SearchBar 
+                onSelectSong={setCurrentSong} 
+                initialQuery={searchQuery}
+              />
 
               {/* Quick Picks / Popular Karaoke Songs */}
               <PopularList onSelectSong={setCurrentSong} />

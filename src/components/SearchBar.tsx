@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Loader2, Play, Link as LinkIcon, Music } from 'lucide-react';
 import type { VideoItem } from '../audio/types';
 import { searchKaraokeVideos, extractYouTubeId } from '../services/youtubeService';
@@ -6,20 +6,30 @@ import { searchKaraokeVideos, extractYouTubeId } from '../services/youtubeServic
 interface SearchBarProps {
   onSelectSong: (video: VideoItem) => void;
   isCompact?: boolean;
+  initialQuery?: string;
 }
 
-export const SearchBar: React.FC<SearchBarProps> = ({ onSelectSong, isCompact = false }) => {
-  const [query, setQuery] = useState('');
+export const SearchBar: React.FC<SearchBarProps> = ({ 
+  onSelectSong, 
+  isCompact = false,
+  initialQuery = '' 
+}) => {
+  const [query, setQuery] = useState(initialQuery);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<VideoItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const handleSearch = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmed = query.trim();
+  useEffect(() => {
+    if (initialQuery) {
+      setQuery(initialQuery);
+      performSearch(initialQuery);
+    }
+  }, [initialQuery]);
+
+  const performSearch = async (term: string) => {
+    const trimmed = term.trim();
     if (!trimmed) return;
 
-    // Check if it's a direct URL
     const directId = extractYouTubeId(trimmed);
     if (directId) {
       const directVideo: VideoItem = {
@@ -44,6 +54,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({ onSelectSong, isCompact = 
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSearch = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    performSearch(query);
   };
 
   const handlePick = (video: VideoItem) => {
