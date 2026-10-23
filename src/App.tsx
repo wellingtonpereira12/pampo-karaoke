@@ -11,6 +11,7 @@ import { DiscoBall } from './components/DiscoBall';
 import { RoomsModal } from './components/RoomsModal';
 import { RoomSidebar } from './components/RoomSidebar';
 import { GoogleLoginModal } from './components/GoogleLoginModal';
+import { PlaylistDrawer } from './components/PlaylistDrawer';
 import { useAuth } from './context/AuthContext';
 import { socketService } from './services/socketService';
 import { AudioEngine } from './audio/AudioEngine';
@@ -41,6 +42,18 @@ export function App() {
   } | null>(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(true);
   const lastSyncMessageTimeRef = useRef<number>(0);
+
+  // Playlist & Queue state (Synced in room, persistent in local mode)
+  const [localPlaylist, setLocalPlaylist] = useState<VideoItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('pampo_karaoke_playlist');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
+  const activePlaylist = currentRoom ? (currentRoom.playlist || []) : localPlaylist;
   
   const [masterVolume, setMasterVolume] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -238,6 +251,120 @@ export function App() {
     }
   };
 
+  // Playlist & Queue Management
+  const handleAddToPlaylist = (song: VideoItem) => {
+    if (currentRoom) {
+      socketService.addToPlaylist(song, user || undefined);
+    } else {
+      if (!currentSong) {
+        handleSelectSong(song);
+      } else {
+        setLocalPlaylist(prev => {
+          const item: VideoItem = {
+            ...song,
+            queueId: `queue-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            addedBy: user?.name || 'Você',
+          };
+          const updated = [...prev, item];
+          try {
+            localStorage.setItem('pampo_karaoke_playlist', JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+      }
+    }
+  };
+
+  const handleRemoveFromPlaylist = (queueId?: string, index?: number) => {
+    if (currentRoom) {
+      socketService.removeFromPlaylist(queueId, index);
+    } else {
+      setLocalPlaylist(prev => {
+        let updated: VideoItem[];
+        if (queueId) {
+          updated = prev.filter(item => item.queueId !== queueId);
+        } else if (typeof index === 'number') {
+          updated = [...prev];
+          updated.splice(index, 1);
+        } else {
+          updated = prev;
+        }
+        try {
+          localStorage.setItem('pampo_karaoke_playlist', JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
+    }
+  };
+
+  const handleReorderPlaylist = (fromIndex: number, toIndex: number) => {
+    if (currentRoom) {
+      socketService.reorderPlaylist(fromIndex, toIndex);
+    } else {
+      setLocalPlaylist(prev => {
+        if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) {
+          return prev;
+        }
+        const updated = [...prev];
+        const [moved] = updated.splice(fromIndex, 1);
+        updated.splice(toIndex, 0, moved);
+        try {
+          localStorage.setItem('pampo_karaoke_playlist', JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
+    }
+  };
+
+  const handleClearPlaylist = () => {
+    if (currentRoom) {
+      socketService.clearPlaylist();
+    } else {
+      setLocalPlaylist([]);
+      try {
+        localStorage.removeItem('pampo_karaoke_playlist');
+      } catch (e) {}
+    }
+  };
+
+  const handlePlayNextSong = () => {
+    if (currentRoom) {
+      socketService.playNextSong(user || undefined);
+    } else {
+      if (localPlaylist.length > 0) {
+        const nextSong = localPlaylist[0];
+        const rest = localPlaylist.slice(1);
+        setLocalPlaylist(rest);
+        try {
+          localStorage.setItem('pampo_karaoke_playlist', JSON.stringify(rest));
+        } catch (e) {}
+        handleSelectSong(nextSong);
+      } else {
+        setCurrentSong(null);
+      }
+    }
+  };
+
+  const handlePlaySongFromPlaylist = (song: VideoItem) => {
+    if (currentRoom) {
+      socketService.syncVideoAction(currentRoom.id, 'change_song', song, 0, true, user || undefined);
+      socketService.removeFromPlaylist(song.queueId);
+    } else {
+      setLocalPlaylist(prev => {
+        const updated = prev.filter(item => item.queueId !== song.queueId && item.id !== song.id);
+        try {
+          localStorage.setItem('pampo_karaoke_playlist', JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
+      handleSelectSong(song);
+    }
+  };
+
+  const handleSongEnded = () => {
+    handlePlayNextSong();
+  };
+
   const handleBroadcastSync = (action: 'play' | 'pause' | 'seek' | 'heartbeat', currentTime?: number, isPlaying?: boolean) => {
     if (action === 'play') setIsVideoPlaying(true);
     if (action === 'pause') setIsVideoPlaying(false);
@@ -307,6 +434,8 @@ export function App() {
               setIsRoomsModalOpen(true);
             }
           }}
+          onOpenPlaylist={() => setIsPlaylistOpen(true)}
+          playlistCount={activePlaylist.length}
           connectedMicCount={mics.length}
           isFullscreen={isFullscreen}
           onToggleFullscreen={handleToggleFullscreen}
@@ -351,11 +480,15 @@ export function App() {
               {/* Compact Search Bar above video to easily change songs (only in normal mode) */}
               {!isStudioMode && (
                 <div className="w-full max-w-3xl transition-all duration-300">
-                  <SearchBar onSelectSong={handleSelectSong} isCompact />
+                  <SearchBar 
+                    onSelectSong={handleSelectSong} 
+                    onAddToPlaylist={handleAddToPlaylist}
+                    isCompact 
+                  />
                 </div>
               )}
 
-              {/* Large YouTube Karaoke Stage Display with Room Sync */}
+              {/* Large YouTube Karaoke Stage Display with Room Sync & Playlist */}
               <KaraokePlayer
                 currentSong={currentSong}
                 onChangeSong={() => {
@@ -371,6 +504,10 @@ export function App() {
                 currentRoom={currentRoom}
                 syncEvent={syncEvent}
                 onBroadcastSync={handleBroadcastSync}
+                playlistCount={activePlaylist.length}
+                onOpenPlaylist={() => setIsPlaylistOpen(true)}
+                onPlayNextSong={handlePlayNextSong}
+                onSongEnded={handleSongEnded}
               />
             </div>
           ) : (
@@ -394,11 +531,15 @@ export function App() {
 
               <SearchBar 
                 onSelectSong={handleSelectSong} 
+                onAddToPlaylist={handleAddToPlaylist}
                 initialQuery={searchQuery}
               />
 
               {/* Quick Picks / Popular Karaoke Songs */}
-              <PopularList onSelectSong={handleSelectSong} />
+              <PopularList 
+                onSelectSong={handleSelectSong} 
+                onAddToPlaylist={handleAddToPlaylist}
+              />
             </div>
           )}
         </div>
@@ -414,6 +555,22 @@ export function App() {
           onUpdateSettings={handleUpdateEffectSettings}
         />
       </div>
+
+      {/* Playlist Drawer (Collapsible on the right side) */}
+      <PlaylistDrawer
+        isOpen={isPlaylistOpen}
+        onClose={() => setIsPlaylistOpen(false)}
+        onToggle={() => setIsPlaylistOpen(prev => !prev)}
+        playlist={activePlaylist}
+        currentSong={currentSong}
+        onPlaySong={handlePlaySongFromPlaylist}
+        onPlayNextSong={handlePlayNextSong}
+        onRemoveFromPlaylist={handleRemoveFromPlaylist}
+        onReorderPlaylist={handleReorderPlaylist}
+        onClearPlaylist={handleClearPlaylist}
+        onAddSong={handleAddToPlaylist}
+        isInRoom={!!currentRoom}
+      />
 
       {/* Modals */}
       <AddInputModal

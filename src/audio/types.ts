@@ -46,4 +46,6 @@ export interface VideoItem {
   duration: string;
   thumbnail: string;
   url: string;
+  addedBy?: string;
+  queueId?: string;
 }

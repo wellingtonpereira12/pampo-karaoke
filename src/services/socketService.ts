@@ -195,6 +195,27 @@ class SocketService {
   public reportVoiceActivity(isSpeaking: boolean) {
     this.socket?.emit('voice_activity', { isSpeaking });
   }
+
+  // Playlist & Queue
+  public addToPlaylist(song: VideoItem, user?: User) {
+    this.socket?.emit('add_to_playlist', { song, user });
+  }
+
+  public removeFromPlaylist(queueId?: string, index?: number) {
+    this.socket?.emit('remove_from_playlist', { queueId, index });
+  }
+
+  public reorderPlaylist(fromIndex: number, toIndex: number) {
+    this.socket?.emit('reorder_playlist', { fromIndex, toIndex });
+  }
+
+  public clearPlaylist() {
+    this.socket?.emit('clear_playlist');
+  }
+
+  public playNextSong(user?: User) {
+    this.socket?.emit('play_next_song', { user });
+  }
 }
 
 export const socketService = SocketService.getInstance();

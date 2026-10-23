@@ -26,6 +26,7 @@ export interface Room {
   currentSong: VideoItem | null;
   isPlaying: boolean;
   currentTime: number;
+  playlist: VideoItem[];
   lastUpdatedBy?: string;
   createdAt: string;
 }

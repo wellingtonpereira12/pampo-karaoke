@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Plus, Speaker, Maximize2, Minimize2, Music, Users, LogIn, LogOut } from 'lucide-react';
+import { Plus, Speaker, Maximize2, Minimize2, Music, Users, LogIn, LogOut, ListMusic } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
   onOpenAddInput: () => void;
   onOpenSpeakerModal: () => void;
   onOpenRoomsModal: () => void;
+  onOpenPlaylist?: () => void;
+  playlistCount?: number;
   connectedMicCount: number;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
@@ -17,6 +19,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAddInput,
   onOpenSpeakerModal,
   onOpenRoomsModal,
+  onOpenPlaylist,
+  playlistCount = 0,
   connectedMicCount,
   isFullscreen,
   onToggleFullscreen,
@@ -52,6 +56,23 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right Actions: Minimalist round buttons & Online Rooms & Login */}
       <div className="flex items-center gap-2.5 sm:gap-3">
+        {/* Playlist & Fila Button */}
+        {onOpenPlaylist && (
+          <button
+            onClick={onOpenPlaylist}
+            title="Ver Playlist & Fila de Músicas [Atalho: P]"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800/80 hover:bg-pink-600/20 border border-pink-500/30 hover:border-pink-500 text-pink-300 text-xs font-bold transition shadow-sm group"
+          >
+            <ListMusic className="w-4 h-4 text-pink-400 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">Playlist</span>
+            {playlistCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-pink-500 text-white text-[10px] font-black flex items-center justify-center shadow-glow-pink">
+                {playlistCount}
+              </span>
+            )}
+          </button>
+        )}
+
         {/* Salas Online Button (Discord style rooms) */}
         <button
           onClick={onOpenRoomsModal}

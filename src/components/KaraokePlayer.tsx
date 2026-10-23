@@ -8,7 +8,9 @@ import {
   ExternalLink, 
   RectangleHorizontal,
   Users,
-  Radio
+  Radio,
+  ListMusic,
+  SkipForward
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { VideoItem } from '../audio/types';
@@ -22,6 +24,10 @@ interface KaraokePlayerProps {
   isStudioMode?: boolean;
   onToggleStudioMode?: () => void;
   currentRoom?: Room | null;
+  playlistCount?: number;
+  onOpenPlaylist?: () => void;
+  onPlayNextSong?: () => void;
+  onSongEnded?: () => void;
   syncEvent?: { 
     action: string; 
     currentTime?: number; 
@@ -44,6 +50,10 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
   isStudioMode = false,
   onToggleStudioMode,
   currentRoom,
+  playlistCount = 0,
+  onOpenPlaylist,
+  onPlayNextSong,
+  onSongEnded,
   syncEvent,
   onBroadcastSync,
 }) => {
@@ -242,6 +252,9 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
               // YT.PlayerState.ENDED = 0 (Vídeo finalizado)
               else if (event.data === 0) {
                 handleApplause();
+                if (onSongEnded) {
+                  onSongEnded();
+                }
               }
             },
           },
@@ -403,6 +416,35 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
               <span className="hidden sm:inline">
                 {isStudioMode ? 'Modo Normal' : 'Modo Estúdio'}
               </span>
+            </button>
+          )}
+
+          {/* Playlist & Fila Button */}
+          {onOpenPlaylist && (
+            <button
+              onClick={onOpenPlaylist}
+              title="Ver Playlist & Fila de Músicas [Atalho: P]"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-slate-900/80 hover:bg-pink-600/80 text-slate-200 hover:text-white text-xs font-semibold backdrop-blur border border-pink-500/40 hover:border-pink-400 transition shadow-sm group"
+            >
+              <ListMusic className="w-3.5 h-3.5 text-pink-400 group-hover:scale-110 transition-transform" />
+              <span className="hidden sm:inline">Fila</span>
+              {playlistCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-pink-500 text-white text-[10px] font-black shadow-glow-pink">
+                  {playlistCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* Skip / Next Song Button */}
+          {playlistCount > 0 && onPlayNextSong && (
+            <button
+              onClick={onPlayNextSong}
+              title="Pular para a Próxima Música na Fila"
+              className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full bg-pink-500 hover:bg-pink-400 text-slate-950 text-xs font-bold transition shadow-glow-pink"
+            >
+              <SkipForward className="w-3.5 h-3.5 fill-current" />
+              <span className="hidden md:inline">Próxima</span>
             </button>
           )}
 

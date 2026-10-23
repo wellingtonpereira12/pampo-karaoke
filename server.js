@@ -250,6 +250,7 @@ function serializeRoom(room) {
     currentSong: room.currentSong,
     isPlaying: room.isPlaying,
     currentTime: currentTime,
+    playlist: room.playlist || [],
     createdAt: room.createdAt,
   };
 }
@@ -289,6 +290,7 @@ io.on('connection', socket => {
         currentSong: null,
         isPlaying: false,
         currentTime: 0,
+        playlist: [],
         createdAt: new Date().toISOString(),
       };
 
@@ -458,6 +460,158 @@ io.on('connection', socket => {
     if (action !== 'heartbeat') {
       io.to(currentRoomId).emit('room_updated', serializeRoom(room));
     }
+  });
+
+  // 4.1. Shared Room Playlist & Queue Management
+  socket.on('add_to_playlist', ({ song, user }) => {
+    if (!currentRoomId || !song) return;
+    const room = rooms.get(currentRoomId);
+    if (!room) return;
+    if (!Array.isArray(room.playlist)) room.playlist = [];
+
+    const item = {
+      ...song,
+      queueId: `queue-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      addedBy: user?.name || currentUser?.name || 'Alguém',
+    };
+
+    // Se nenhuma música estiver tocando na sala, começa tocando imediatamente!
+    if (!room.currentSong) {
+      room.currentSong = item;
+      room.currentTime = 0;
+      room.isPlaying = true;
+      room.startedAt = Date.now();
+
+      io.to(currentRoomId).emit('sync_video_action', {
+        action: 'change_song',
+        song: item,
+        currentTime: 0,
+        isPlaying: true,
+        user: user || currentUser,
+        sentAt: Date.now(),
+        serverTime: Date.now(),
+      });
+
+      io.to(currentRoomId).emit('chat_message', {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        roomId: currentRoomId,
+        userId: 'system',
+        userName: 'Pampo Karaokê',
+        userAvatar: '',
+        text: `🎶 ${item.addedBy} iniciou a reprodução com: "${item.title}"`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: 'song_change',
+      });
+    } else {
+      room.playlist.push(item);
+
+      io.to(currentRoomId).emit('chat_message', {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        roomId: currentRoomId,
+        userId: 'system',
+        userName: 'Pampo Karaokê',
+        userAvatar: '',
+        text: `📑 ${item.addedBy} adicionou à playlist (#${room.playlist.length}): "${item.title}"`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: 'system',
+      });
+    }
+
+    io.to(currentRoomId).emit('room_updated', serializeRoom(room));
+  });
+
+  socket.on('remove_from_playlist', ({ queueId, index }) => {
+    if (!currentRoomId) return;
+    const room = rooms.get(currentRoomId);
+    if (!room || !Array.isArray(room.playlist)) return;
+
+    if (queueId) {
+      room.playlist = room.playlist.filter(item => item.queueId !== queueId);
+    } else if (typeof index === 'number' && index >= 0 && index < room.playlist.length) {
+      room.playlist.splice(index, 1);
+    }
+
+    io.to(currentRoomId).emit('room_updated', serializeRoom(room));
+  });
+
+  socket.on('reorder_playlist', ({ fromIndex, toIndex }) => {
+    if (!currentRoomId) return;
+    const room = rooms.get(currentRoomId);
+    if (!room || !Array.isArray(room.playlist)) return;
+
+    if (
+      typeof fromIndex === 'number' &&
+      typeof toIndex === 'number' &&
+      fromIndex >= 0 &&
+      fromIndex < room.playlist.length &&
+      toIndex >= 0 &&
+      toIndex < room.playlist.length
+    ) {
+      const [moved] = room.playlist.splice(fromIndex, 1);
+      room.playlist.splice(toIndex, 0, moved);
+      io.to(currentRoomId).emit('room_updated', serializeRoom(room));
+    }
+  });
+
+  socket.on('clear_playlist', () => {
+    if (!currentRoomId) return;
+    const room = rooms.get(currentRoomId);
+    if (!room) return;
+    room.playlist = [];
+    io.to(currentRoomId).emit('room_updated', serializeRoom(room));
+  });
+
+  socket.on('play_next_song', ({ user }) => {
+    if (!currentRoomId) return;
+    const room = rooms.get(currentRoomId);
+    if (!room) return;
+
+    if (Array.isArray(room.playlist) && room.playlist.length > 0) {
+      const nextSong = room.playlist.shift();
+      room.currentSong = nextSong;
+      room.currentTime = 0;
+      room.isPlaying = true;
+      room.startedAt = Date.now();
+
+      io.to(currentRoomId).emit('sync_video_action', {
+        action: 'change_song',
+        song: nextSong,
+        currentTime: 0,
+        isPlaying: true,
+        user: user || currentUser,
+        sentAt: Date.now(),
+        serverTime: Date.now(),
+      });
+
+      io.to(currentRoomId).emit('chat_message', {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        roomId: currentRoomId,
+        userId: 'system',
+        userName: 'Pampo Karaokê',
+        userAvatar: '',
+        text: `⏭ Tocando a próxima da playlist: "${nextSong.title}"`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: 'song_change',
+      });
+    } else {
+      // Fila terminou
+      room.currentSong = null;
+      room.isPlaying = false;
+      room.currentTime = 0;
+      room.startedAt = 0;
+
+      io.to(currentRoomId).emit('sync_video_action', {
+        action: 'change_song',
+        song: null,
+        currentTime: 0,
+        isPlaying: false,
+        user: user || currentUser,
+        sentAt: Date.now(),
+        serverTime: Date.now(),
+      });
+    }
+
+    io.to(currentRoomId).emit('room_updated', serializeRoom(room));
   });
 
   // 5. Room Chat Message
