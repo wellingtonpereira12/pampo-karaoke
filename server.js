@@ -25,6 +25,22 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 app.use(cors());
 app.use(express.json());
 
+// Força HTTPS e redireciona qualquer acesso por IP/porta HTTP para o domínio seguro oficial
+app.use((req, res, next) => {
+  // Ignora o health check interno do Docker
+  if (req.path === '/api/health') return next();
+
+  const host = req.get('x-forwarded-host') || req.get('host') || '';
+  const proto = req.get('x-forwarded-proto') || req.protocol;
+
+  // Se o usuário digitou o IP diretamente ou a porta :3130, ou acessou por HTTP inseguro, redireciona para HTTPS
+  if (host.includes('187.127.17.88') || host.includes(':3130') || (proto === 'http' && !req.secure)) {
+    return res.redirect(301, `https://karaoke.pampo.tech${req.originalUrl}`);
+  }
+
+  next();
+});
+
 // In-memory Room State
 const rooms = new Map();
 
