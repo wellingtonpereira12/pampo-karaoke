@@ -119,10 +119,14 @@ export const MicCard: React.FC<MicCardProps> = ({
       {/* Retorno de Voz (Voice Monitor on/off) */}
       <button
         onClick={() => onMonitorToggle(mic.id, !mic.monitorVoice)}
-        title={mic.monitorVoice ? 'Retorno de voz ativo (Ouvindo na caixa de som)' : 'Retorno de voz desativado'}
+        title={
+          mic.monitorVoice
+            ? 'Retorno de voz ATIVO (ouvindo sua voz nas caixas/fone). Dica: desative se sentir o atraso natural do Windows para cantar sem eco mental!'
+            : 'Retorno de voz DESLIGADO (voz natural 0ms sem eco). Amigos na sala e gravação continuam te ouvindo 100%!'
+        }
         className={`p-2 rounded-xl border text-xs flex items-center gap-1 font-medium transition ${
           mic.monitorVoice
-            ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300'
+            ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 ring-1 ring-emerald-500/30'
             : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:text-slate-200'
         }`}
       >

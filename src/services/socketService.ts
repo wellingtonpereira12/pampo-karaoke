@@ -7,6 +7,7 @@ class SocketService {
   public socket: Socket | null = null;
   private peerConnections = new Map<string, RTCPeerConnection>();
   private remoteAudioStreams = new Map<string, MediaStream>();
+  private peerAudioElements = new Map<string, HTMLAudioElement>();
   private localStream: MediaStream | null = null;
 
   public static getInstance(): SocketService {
@@ -54,6 +55,9 @@ class SocketService {
 
     // Incoming WebRTC peer connection signal
     this.socket.on('webrtc_signal', async ({ senderSocketId, signal }) => {
+      // Guard: strictly ignore any signal from oneself
+      if (!senderSocketId || senderSocketId === this.socket?.id) return;
+
       let pc = this.peerConnections.get(senderSocketId);
 
       if (!pc) {
@@ -80,7 +84,7 @@ class SocketService {
       }
     });
 
-    // When someone leaves the room, cleanup their peer connection
+    // When someone leaves the room, cleanup their peer connection and audio
     this.socket.on('peer_left', ({ socketId }) => {
       const pc = this.peerConnections.get(socketId);
       if (pc) {
@@ -88,10 +92,20 @@ class SocketService {
         this.peerConnections.delete(socketId);
       }
       this.remoteAudioStreams.delete(socketId);
+
+      const existingAudio = this.peerAudioElements.get(socketId);
+      if (existingAudio) {
+        existingAudio.pause();
+        existingAudio.srcObject = null;
+        this.peerAudioElements.delete(socketId);
+      }
     });
 
     // When someone joins, initiate offer if we are existing member
     this.socket.on('peer_joined', async ({ socketId }) => {
+      // Guard: do not connect to oneself
+      if (!socketId || socketId === this.socket?.id) return;
+
       const pc = this.createPeerConnection(socketId);
       this.peerConnections.set(socketId, pc);
 
@@ -133,16 +147,26 @@ class SocketService {
       }
     };
 
-    // Play incoming audio from room participant
+    // Play incoming audio from room participant (direct P2P peer, never looping back)
     pc.ontrack = event => {
+      if (targetSocketId === this.socket?.id) return;
+
       const remoteStream = event.streams[0] || new MediaStream([event.track]);
       this.remoteAudioStreams.set(targetSocketId, remoteStream);
+
+      // Clean up previous element if exists to prevent duplicate audio loops
+      const existingAudio = this.peerAudioElements.get(targetSocketId);
+      if (existingAudio) {
+        existingAudio.pause();
+        existingAudio.srcObject = null;
+      }
 
       // Create an invisible audio element to play peer voice
       const audio = new Audio();
       audio.srcObject = remoteStream;
       audio.autoplay = true;
       audio.play().catch(e => console.warn('Autoplay error for peer audio:', e));
+      this.peerAudioElements.set(targetSocketId, audio);
     };
 
     return pc;
@@ -152,6 +176,11 @@ class SocketService {
     this.peerConnections.forEach(pc => pc.close());
     this.peerConnections.clear();
     this.remoteAudioStreams.clear();
+    this.peerAudioElements.forEach(audio => {
+      audio.pause();
+      audio.srcObject = null;
+    });
+    this.peerAudioElements.clear();
     this.socket?.emit('leave_room');
   }
 
