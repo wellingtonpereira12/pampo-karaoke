@@ -1,7 +1,7 @@
 {
   "name": "pampo-karaoke",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Pampo Karaokê - Sistema profissional de karaokê web com suporte a múltiplos microfones, efeitos de áudio em tempo real e busca integrada do YouTube",
   "type": "module",
   "main": "electron/main.cjs",
@@ -17,7 +17,7 @@
   },
   "build": {
     "appId": "tech.pampo.karaoke",
-    "productName": "Pampo Karaokê",
+    "productName": "Pampo-Karaoke",
     "directories": {
       "output": "release"
     },
@@ -25,14 +25,19 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "artifactName": "${productName}-v${version}-Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Pampo Karaokê"
+      "shortcutName": "Pampo Karaokê",
+      "artifactName": "${productName}-v${version}-Instalador.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-v${version}-Portatil.${ext}"
     },
     "files": [
       "dist/**/*",
@@ -54,6 +59,9 @@
     "socket.io-client": "^4.8.4",
     "tailwindcss": "^3.4.17",
     "yt-search": "^2.13.1"
+  },
+  "overrides": {
+    "@noble/hashes": "1.8.0"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",
