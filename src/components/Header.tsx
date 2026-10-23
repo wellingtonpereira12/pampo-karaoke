@@ -35,8 +35,6 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className={`w-full bg-[#10131b]/95 border-b border-slate-800/80 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-40 backdrop-blur-md transition-all duration-300 ease-out ${
       isInRoom ? 'md:pl-80' : ''
-    } ${
-      isPlaylistOpen ? 'md:pr-[380px] lg:pr-[420px]' : ''
     }`}>
       {/* Brand: Pampo Karaokê */}
       <div className="flex items-center gap-3">

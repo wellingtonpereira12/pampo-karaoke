@@ -181,6 +181,21 @@ export function App() {
     }
   };
 
+  // Global hotkey 'P' to toggle playlist
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+
+      if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        setIsPlaylistOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Microphone management
   const handleAddMic = async (deviceId: string, label: string) => {
     const engine = AudioEngine.getInstance();
@@ -476,14 +491,12 @@ export function App() {
         />
       )}
 
-      {/* Main Content Area (shifted right if in room, pushed left if playlist open, with dynamic video ambilight in studio mode) */}
+      {/* Main Content Area (shifted right if in room, with dynamic video ambilight in studio mode) */}
       <main 
         className={`relative z-10 flex-1 flex flex-col items-center justify-start w-full mx-auto px-2 sm:px-4 py-2 transition-all duration-300 ease-out ${
           isStudioMode && currentSong ? 'max-w-[99vw] md:px-4' : 'max-w-7xl'
         } ${
           currentRoom ? 'md:pl-80' : ''
-        } ${
-          isPlaylistOpen ? 'md:pr-[380px] lg:pr-[420px]' : ''
         }`}
         style={
           isStudioMode && videoPalette ? {
@@ -520,16 +533,12 @@ export function App() {
                 </div>
               )}
 
-              {/* Stage Layout: In Normal Mode, 2-column grid with Suggestions in the corner/side (adapts seamlessly when playlist pushes the stage left) */}
+              {/* Stage Layout: In Normal Mode, 2-column grid with Suggestions in the right column */}
               {!isStudioMode ? (
-                <div className={`w-full transition-all duration-300 ease-out ${
-                  isPlaylistOpen 
-                    ? 'flex flex-col xl:grid xl:grid-cols-12 gap-5 items-start max-w-full' 
-                    : 'grid grid-cols-1 lg:grid-cols-12 gap-5 items-start max-w-7xl'
-                }`}>
+                <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-start max-w-7xl">
                   {/* Main Video Player */}
                   <div className={`w-full flex flex-col gap-2 transition-all duration-300 ${
-                    isPlaylistOpen ? 'xl:col-span-8 2xl:col-span-8' : 'lg:col-span-8 xl:col-span-8'
+                    isPlaylistOpen ? 'lg:col-span-7 xl:col-span-8' : 'lg:col-span-8 xl:col-span-8'
                   }`}>
                     <KaraokePlayer
                       currentSong={currentSong}
@@ -556,10 +565,27 @@ export function App() {
                     />
                   </div>
 
-                  {/* Corner Suggestions Panel */}
-                  <div className={`w-full flex flex-col gap-3 transition-all duration-300 ${
-                    isPlaylistOpen ? 'xl:col-span-4 2xl:col-span-4' : 'lg:col-span-4 xl:col-span-4'
+                  {/* Right Column: Playlist (when open) + Suggestions */}
+                  <div className={`w-full flex flex-col gap-4 transition-all duration-300 ${
+                    isPlaylistOpen ? 'lg:col-span-5 xl:col-span-4' : 'lg:col-span-4 xl:col-span-4'
                   }`}>
+                    {isPlaylistOpen && (
+                      <PlaylistDrawer
+                        isOpen={isPlaylistOpen}
+                        onClose={() => setIsPlaylistOpen(false)}
+                        onToggle={() => setIsPlaylistOpen(prev => !prev)}
+                        playlist={activePlaylist}
+                        currentSong={currentSong}
+                        onPlaySong={handlePlaySongFromPlaylist}
+                        onPlayNextSong={handlePlayNextSong}
+                        onRemoveFromPlaylist={handleRemoveFromPlaylist}
+                        onReorderPlaylist={handleReorderPlaylist}
+                        onClearPlaylist={handleClearPlaylist}
+                        onAddSong={handleAddToPlaylist}
+                        isInRoom={!!currentRoom}
+                      />
+                    )}
+
                     <RelatedSuggestions
                       currentSong={currentSong}
                       playlist={activePlaylist}
@@ -569,36 +595,77 @@ export function App() {
                   </div>
                 </div>
               ) : (
-                /* Studio Mode: Full stage width without side suggestions (smoothly pushed left when playlist is docked) */
-                <div className="w-full transition-all duration-300 ease-out">
-                  <KaraokePlayer
-                    currentSong={currentSong}
-                    onChangeSong={() => {
-                      setCurrentSong(null);
-                      if (currentRoom) {
-                        socketService.syncVideoAction(currentRoom.id, 'change_song', null, 0, false, user || undefined);
-                        socketService.sendChatMessage('⏹ Removeu a música atual', 'system');
-                      }
-                    }}
-                    onSearchAlternative={handleSearchAlternative}
-                    onAutoSwitchSong={handleSelectSong}
-                    isStudioMode={isStudioMode}
-                    onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
-                    currentRoom={currentRoom}
-                    videoPalette={videoPalette}
-                    syncEvent={syncEvent}
-                    onBroadcastSync={handleBroadcastSync}
-                    playlistCount={activePlaylist.length}
-                    isPlaylistOpen={isPlaylistOpen}
-                    onOpenPlaylist={() => setIsPlaylistOpen(prev => !prev)}
-                    onPlayNextSong={handlePlayNextSong}
-                    onSongEnded={handleSongEnded}
-                  />
+                /* Studio Mode: Full stage width; if playlist is open, sits docked side-by-side on the right */
+                <div className="w-full flex flex-col lg:flex-row gap-5 items-start transition-all duration-300 ease-out">
+                  <div className="flex-1 min-w-0 w-full transition-all duration-300">
+                    <KaraokePlayer
+                      currentSong={currentSong}
+                      onChangeSong={() => {
+                        setCurrentSong(null);
+                        if (currentRoom) {
+                          socketService.syncVideoAction(currentRoom.id, 'change_song', null, 0, false, user || undefined);
+                          socketService.sendChatMessage('⏹ Removeu a música atual', 'system');
+                        }
+                      }}
+                      onSearchAlternative={handleSearchAlternative}
+                      onAutoSwitchSong={handleSelectSong}
+                      isStudioMode={isStudioMode}
+                      onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
+                      currentRoom={currentRoom}
+                      videoPalette={videoPalette}
+                      syncEvent={syncEvent}
+                      onBroadcastSync={handleBroadcastSync}
+                      playlistCount={activePlaylist.length}
+                      isPlaylistOpen={isPlaylistOpen}
+                      onOpenPlaylist={() => setIsPlaylistOpen(prev => !prev)}
+                      onPlayNextSong={handlePlayNextSong}
+                      onSongEnded={handleSongEnded}
+                    />
+                  </div>
+
+                  {isPlaylistOpen && (
+                    <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 animate-fadeIn">
+                      <PlaylistDrawer
+                        isOpen={isPlaylistOpen}
+                        onClose={() => setIsPlaylistOpen(false)}
+                        onToggle={() => setIsPlaylistOpen(prev => !prev)}
+                        playlist={activePlaylist}
+                        currentSong={currentSong}
+                        onPlaySong={handlePlaySongFromPlaylist}
+                        onPlayNextSong={handlePlayNextSong}
+                        onRemoveFromPlaylist={handleRemoveFromPlaylist}
+                        onReorderPlaylist={handleReorderPlaylist}
+                        onClearPlaylist={handleClearPlaylist}
+                        onAddSong={handleAddToPlaylist}
+                        isInRoom={!!currentRoom}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           ) : (
             <div className="w-full flex flex-col items-center justify-center py-6 md:py-8">
+              {/* If Playlist is open without a song playing, display it nicely above search */}
+              {isPlaylistOpen && (
+                <div className="w-full max-w-3xl mx-auto mb-6 animate-fadeIn">
+                  <PlaylistDrawer
+                    isOpen={isPlaylistOpen}
+                    onClose={() => setIsPlaylistOpen(false)}
+                    onToggle={() => setIsPlaylistOpen(prev => !prev)}
+                    playlist={activePlaylist}
+                    currentSong={currentSong}
+                    onPlaySong={handlePlaySongFromPlaylist}
+                    onPlayNextSong={handlePlayNextSong}
+                    onRemoveFromPlaylist={handleRemoveFromPlaylist}
+                    onReorderPlaylist={handleReorderPlaylist}
+                    onClearPlaylist={handleClearPlaylist}
+                    onAddSong={handleAddToPlaylist}
+                    isInRoom={!!currentRoom}
+                  />
+                </div>
+              )}
+
               {/* Central Google-style Search Bar with 80s Retro Glow */}
               <div className="text-center mb-6">
                 <div className="inline-block relative">
@@ -633,7 +700,7 @@ export function App() {
       </main>
 
       {/* Effects Panel at the bottom */}
-      <div className={`relative z-10 transition-all duration-300 ease-out ${currentRoom ? 'md:pl-80' : ''} ${isPlaylistOpen ? 'md:pr-[380px] lg:pr-[420px]' : ''}`}>
+      <div className={`relative z-10 transition-all duration-300 ease-out ${currentRoom ? 'md:pl-80' : ''}`}>
         <EffectsPanel
           mics={mics}
           selectedMicId={selectedMicForEffects}
@@ -642,22 +709,6 @@ export function App() {
           onUpdateSettings={handleUpdateEffectSettings}
         />
       </div>
-
-      {/* Playlist Drawer (Collapsible on the right side) */}
-      <PlaylistDrawer
-        isOpen={isPlaylistOpen}
-        onClose={() => setIsPlaylistOpen(false)}
-        onToggle={() => setIsPlaylistOpen(prev => !prev)}
-        playlist={activePlaylist}
-        currentSong={currentSong}
-        onPlaySong={handlePlaySongFromPlaylist}
-        onPlayNextSong={handlePlayNextSong}
-        onRemoveFromPlaylist={handleRemoveFromPlaylist}
-        onReorderPlaylist={handleReorderPlaylist}
-        onClearPlaylist={handleClearPlaylist}
-        onAddSong={handleAddToPlaylist}
-        isInRoom={!!currentRoom}
-      />
 
       {/* Modals */}
       <AddInputModal
