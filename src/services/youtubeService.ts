@@ -34,12 +34,12 @@ export const POPULAR_KARAOKE_HITS: VideoItem[] = [
     url: 'https://www.youtube.com/watch?v=6dATAlSJiNs',
   },
   {
-    id: '_nHT_k9Rswc',
-    title: 'Shallow - Lady Gaga & Bradley Cooper (Karaoke Version)',
-    channel: 'Sing King',
-    duration: '3:37',
-    thumbnail: 'https://i.ytimg.com/vi/_nHT_k9Rswc/hqdefault.jpg',
-    url: 'https://www.youtube.com/watch?v=_nHT_k9Rswc',
+    id: 'ttJncoFIzBM',
+    title: 'Lady Gaga, Bradley Cooper - Shallow (Karaoke Instrumental)',
+    channel: 'Mega Karaoke Songs',
+    duration: '3:40',
+    thumbnail: 'https://i.ytimg.com/vi/ttJncoFIzBM/hqdefault.jpg',
+    url: 'https://www.youtube.com/watch?v=ttJncoFIzBM',
   },
   {
     id: 'f0zT_JwTYt4',

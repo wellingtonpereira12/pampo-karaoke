@@ -499,6 +499,7 @@ export function App() {
                   }
                 }}
                 onSearchAlternative={handleSearchAlternative}
+                onAutoSwitchSong={handleSelectSong}
                 isStudioMode={isStudioMode}
                 onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
                 currentRoom={currentRoom}

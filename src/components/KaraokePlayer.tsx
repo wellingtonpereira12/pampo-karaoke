@@ -10,17 +10,21 @@ import {
   Users,
   Radio,
   ListMusic,
-  SkipForward
+  SkipForward,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { VideoItem } from '../audio/types';
 import type { Room } from '../types/room';
 import { ensureYouTubeApi } from '../utils/youtubeApi';
+import { searchKaraokeVideos } from '../services/youtubeService';
 
 interface KaraokePlayerProps {
   currentSong: VideoItem | null;
   onChangeSong: () => void;
   onSearchAlternative?: (title: string) => void;
+  onAutoSwitchSong?: (video: VideoItem) => void;
   isStudioMode?: boolean;
   onToggleStudioMode?: () => void;
   currentRoom?: Room | null;
@@ -47,6 +51,7 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
   currentSong, 
   onChangeSong,
   onSearchAlternative,
+  onAutoSwitchSong,
   isStudioMode = false,
   onToggleStudioMode,
   currentRoom,
@@ -66,6 +71,8 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
   const currentVideoIdRef = useRef<string | null>(null);
 
   const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
+  const [embedBlockedError, setEmbedBlockedError] = useState<{ isBlocked: boolean; code?: number } | null>(null);
+  const [isFindingAlternative, setIsFindingAlternative] = useState(false);
 
   // Sync fullscreen state of the player container
   useEffect(() => {
@@ -181,6 +188,8 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
       if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
         if (currentVideoIdRef.current !== currentSong.id) {
           currentVideoIdRef.current = currentSong.id;
+          setEmbedBlockedError(null);
+          setIsFindingAlternative(false);
           isRemoteSyncRef.current = true;
           try {
             ytPlayerRef.current.loadVideoById({
@@ -201,6 +210,8 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
       // Initial Player Creation
       if (!playerWrapperRef.current) return;
       currentVideoIdRef.current = currentSong.id;
+      setEmbedBlockedError(null);
+      setIsFindingAlternative(false);
       playerWrapperRef.current.innerHTML = '<div id="karaoke-yt-frame" style="width: 100%; height: 100%;"></div>';
 
       const origin = (typeof window !== 'undefined' && !window.location.origin.startsWith('file:')) 
@@ -229,8 +240,47 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
                 event.target.playVideo?.();
               } catch (e) {}
             },
+            onError: async (event: any) => {
+              console.warn('[KaraokePlayer] Erro retornado pelo YouTube Player:', event.data);
+              // 101 e 150: O proprietário do vídeo desativou a incorporação em outros sites
+              // 100: Vídeo não encontrado ou removido
+              // 2 ou 5: Erro de parâmetros/reprodução
+              if (event.data === 101 || event.data === 150 || event.data === 100) {
+                setEmbedBlockedError({ isBlocked: true, code: event.data });
+                setIsFindingAlternative(true);
+
+                try {
+                  const cleanTitle = (currentSong.title || '')
+                    .replace(/\(Karaok[eê].*?\)/gi, '')
+                    .replace(/\[.*?\]/g, '')
+                    .replace(/\|\s*Karaoke.*$/gi, '')
+                    .trim();
+
+                  const results = await searchKaraokeVideos(cleanTitle);
+                  const candidate = results.find(v => v.id !== currentSong.id);
+
+                  if (candidate && onAutoSwitchSong) {
+                    setTimeout(() => {
+                      setEmbedBlockedError(null);
+                      setIsFindingAlternative(false);
+                      onAutoSwitchSong(candidate);
+                    }, 2000);
+                    return;
+                  }
+                } catch (e) {
+                  console.warn('[KaraokePlayer] Erro na busca de substituto:', e);
+                }
+
+                setIsFindingAlternative(false);
+              }
+            },
             onStateChange: (event: any) => {
               if (isRemoteSyncRef.current || !onBroadcastSync) return;
+
+              // Se voltou a tocar com sucesso, limpa qualquer erro anterior
+              if (event.data === 1 || event.data === 2) {
+                setEmbedBlockedError(null);
+              }
 
               // YT.PlayerState.PLAYING = 1 (Play nativo ou retomada)
               if (event.data === 1) {
@@ -476,6 +526,62 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
           : 'aspect-video min-h-[380px] md:min-h-[520px] lg:min-h-[620px]'
       }`}>
         <div ref={playerWrapperRef} className="absolute inset-0 w-full h-full" />
+
+        {/* Embed Blocked / Owner Restriction Overlay */}
+        {embedBlockedError?.isBlocked && (
+          <div className="absolute inset-0 z-30 bg-[#0b0e17]/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shadow-[0_0_25px_rgba(245,158,11,0.3)] mb-3 animate-bounce">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+
+            <h3 className="text-base sm:text-lg md:text-xl font-bold text-white mb-2">
+              Vídeo com Reprodução Restrita pelo Dono
+            </h3>
+
+            <p className="text-xs sm:text-sm text-slate-300 max-w-lg mb-4 leading-relaxed">
+              O proprietário deste vídeo específico no YouTube (<span className="text-pink-400 font-semibold">{currentSong.channel}</span>) desativou a reprodução fora do YouTube (Erro {embedBlockedError.code || 150}).
+            </p>
+
+            {isFindingAlternative ? (
+              <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-pink-500/20 border border-pink-500/40 text-pink-300 text-xs font-semibold mb-5 shadow-glow-pink animate-pulse">
+                <Loader2 className="w-4 h-4 animate-spin text-pink-400" />
+                Localizando e trocando automaticamente para outra versão de karaokê liberada...
+              </div>
+            ) : (
+              <p className="text-xs text-emerald-400 mb-5 font-medium">
+                Temos outras versões excelentes disponíveis para esta mesma música!
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center justify-center gap-2.5 max-w-md">
+              <button
+                onClick={handleAlternative}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white font-bold text-xs shadow-glow-pink flex items-center gap-2 transition"
+              >
+                <Search className="w-4 h-4" />
+                Buscar Outra Versão Desta Música
+              </button>
+
+              <a
+                href={currentSong.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-semibold text-xs flex items-center gap-2 transition"
+              >
+                <ExternalLink className="w-4 h-4 text-cyan-400" />
+                Assistir no YouTube
+              </a>
+
+              <button
+                onClick={onChangeSong}
+                className="px-3 py-2 rounded-xl text-slate-400 hover:text-slate-200 text-xs flex items-center gap-1.5 transition"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Escolher Outra Música
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom Bar Details */}

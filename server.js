@@ -176,7 +176,28 @@ app.get('/api/auth/google/callback', async (req, res) => {
   }
 });
 
-// YouTube karaoke search endpoint
+// Helper to verify if YouTube video allows external embedding
+async function isVideoEmbeddable(videoId) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1300);
+    const response = await fetch(
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
+      {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      }
+    );
+    clearTimeout(timeout);
+    // 200 = Embed permitida; 401 = Bloqueada pelo autor/gravadora; 404 = Privado/removido
+    return response.status === 200;
+  } catch (err) {
+    // Se der timeout ou falha transitória, mantém para não descartar indevidamente
+    return true;
+  }
+}
+
+// YouTube karaoke search endpoint com filtro de vídeos com reprodução liberada
 app.get('/api/search', async (req, res) => {
   try {
     const rawQuery = String(req.query.q || '').trim();
@@ -194,18 +215,31 @@ app.get('/api/search', async (req, res) => {
 
     const searchResults = await ytSearch(query);
     const rawVideos = searchResults.videos || [];
-    // Prioritize videos from real karaoke channels
-    const videos = rawVideos
+    
+    // Filtra candidatos prioritários de canais de karaokê
+    const candidateVideos = rawVideos
       .filter(v => !v.author?.name?.includes('VEVO') || v.title.toLowerCase().includes('karaoke'))
-      .slice(0, limit)
-      .map(v => ({
-        id: v.videoId,
-        title: v.title,
-        channel: v.author?.name || 'Karaokê',
-        duration: v.timestamp || '',
-        thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
-        url: v.url,
-      }));
+      .slice(0, 16);
+
+    // Verificação rápida paralela de incorporação liberada (elimina os vídeos com erro 401)
+    const verifiedCandidates = await Promise.all(
+      candidateVideos.map(async v => {
+        const embeddable = await isVideoEmbeddable(v.videoId);
+        return { video: v, embeddable };
+      })
+    );
+
+    const playable = verifiedCandidates.filter(c => c.embeddable).map(c => c.video);
+    const finalCandidates = (playable.length > 0 ? playable : candidateVideos).slice(0, limit);
+
+    const videos = finalCandidates.map(v => ({
+      id: v.videoId,
+      title: v.title,
+      channel: v.author?.name || 'Karaokê',
+      duration: v.timestamp || '',
+      thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
+      url: v.url,
+    }));
 
     return res.json({ results: videos });
   } catch (err) {
