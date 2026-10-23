@@ -4,10 +4,10 @@ import type { ConnectedMicInfo, EffectPresetId, EffectSettings } from './types';
 export const PRESET_DEFAULTS: Record<EffectPresetId, EffectSettings> = {
   show: {
     preset: 'show',
-    reverbWet: 0.42,
-    delayWet: 0.15,
-    delayTime: 0.18,
-    delayFeedback: 0.22,
+    reverbWet: 0.25,
+    delayWet: 0.0,
+    delayTime: 0.0,
+    delayFeedback: 0.0,
     bassGain: 1.5,
     midGain: 2.0,
     trebleGain: 2.5,
@@ -169,8 +169,8 @@ export class AudioEngine {
       this.masterGain.gain.setValueAtTime(1.0, this.audioCtx.currentTime);
       this.masterGain.connect(this.audioCtx.destination);
 
-      // Pre-synthesize shared impulse response for rich reverb
-      this.sharedReverbBuffer = createReverbImpulseResponse(this.audioCtx, 2.8, 2.2);
+      // Pre-synthesize shared impulse response for rich low-latency reverb
+      this.sharedReverbBuffer = createReverbImpulseResponse(this.audioCtx, 1.8, 2.8);
     }
     if (this.audioCtx.state === 'suspended') {
       this.audioCtx.resume();
@@ -298,7 +298,7 @@ export class AudioEngine {
     const delayFeedbackGain = ctx.createGain();
     delayFeedbackGain.gain.setValueAtTime(0.22, ctx.currentTime);
     const delayGain = ctx.createGain();
-    delayGain.gain.setValueAtTime(0.15, ctx.currentTime);
+    delayGain.gain.setValueAtTime(0.0, ctx.currentTime);
 
     // Connect delay feedback loop
     delayNode.connect(delayFeedbackGain);
