@@ -264,6 +264,16 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+// Helper to randomly shuffle an array (Fisher-Yates)
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 // YouTube related karaoke suggestions endpoint (outra música de karaokê do mesmo cantor ou estilo, estritamente excluindo a mesma faixa)
 app.get('/api/suggestions', async (req, res) => {
   try {
@@ -348,7 +358,7 @@ app.get('/api/suggestions', async (req, res) => {
           allVideos.push(...r.videos);
         }
       } catch (e) {}
-      if (allVideos.length >= 25) break;
+      if (allVideos.length >= 35) break;
     }
 
     const seen = new Set();
@@ -378,12 +388,16 @@ app.get('/api/suggestions', async (req, res) => {
       }
 
       candidateList.push(v);
-      if (candidateList.length >= 12) break;
+      if (candidateList.length >= 25) break;
     }
 
+    // Shuffle candidates to ensure fresh variety on every reload
+    const shuffledCandidates = shuffleArray(candidateList);
+
     // Verify embeddability so no Error 150 blocked videos are suggested
+    const checkBatch = shuffledCandidates.slice(0, 16);
     const verified = await Promise.all(
-      candidateList.map(async v => {
+      checkBatch.map(async v => {
         const embeddable = await isVideoEmbeddable(v.videoId);
         return { video: v, embeddable };
       })
@@ -410,53 +424,92 @@ app.get('/api/suggestions', async (req, res) => {
   }
 });
 
-// Dynamic popular karaoke hits sets endpoint with reloadable categories
+// Dynamic popular karaoke hits sets endpoint with reloadable categories and random variety
 const POPULAR_SEARCH_PRESETS = [
-  { label: '🌟 Clássicos Sertanejos', query: 'karaoke sertanejo modao maiores sucessos instrumental' },
-  { label: '🎸 Rock Nacional 80 & 90', query: 'karaoke rock nacional anos 80 90' },
-  { label: '🥁 Pagode, Samba & MPB', query: 'karaoke pagode samba raca negra pericles' },
-  { label: '✨ Pop & Clássicos Internacionais', query: 'karaoke greatest pop rock hits lyrics' },
-  { label: '🔥 Modão & Boteco', query: 'karaoke modao leandro leonardo zeze bruno marrone' },
-  { label: '🎤 Hits Inesquecíveis', query: 'karaoke brasil mais tocadas todas as epocas' },
+  { label: '🎸 Rock Nacional 80 & 90', queries: ['karaoketa rock nacional anos 80 90', 'karaoke legiao urbana cazuza titaes paralamas'] },
+  { label: '🌟 Clássicos Sertanejos', queries: ['karaoketa sertanejo modao maiores sucessos', 'karaoke chitãozinho xororo zeze leandro leonardo'] },
+  { label: '🥁 Pagode & Samba Anos 90', queries: ['karaoketa pagode anos 90 raca negra exaltasamba', 'karaoke pericles so pra contrariar soweto'] },
+  { label: '👑 Queen, Beatles & Rock Legends', queries: ['karaoke queen beatles bon jovi greatest hits', 'karaoke classic rock legends instrumental lyrics'] },
+  { label: '✨ Flashback & Disco 70s/80s', queries: ['karaoke flashback anos 80 disco michael jackson', 'karaoke abba bee gees earth wind fire lyrics'] },
+  { label: '🔥 Modão de Boteco', queries: ['karaoketa modao de boteco bruno e marrone', 'karaoke trio parada dura tião carreiro'] },
+  { label: '🎙 MPB & Grandes Mestres', queries: ['karaoketa mpb djavan caetano veloso gilberto gil', 'karaoke tim maia elis regina chico buarque'] },
+  { label: '⚡ Anos 2000 Brasil', queries: ['karaoketa anos 2000 charlie brown jr cpm 22 skank', 'karaoke pitty detonautas jota quest'] },
+  { label: '💃 Axé Retrô & Carnavalesco', queries: ['karaoketa axe anos 90 ivete sangalo banda eva', 'karaoke chiclete com banana cheiro de amor olodum'] },
+  { label: '🌵 Forró das Antigas & Piseiro', queries: ['karaoketa forro das antigas calcinha preta mastruz', 'karaoke magnificos limao com mel avioes'] },
+  { label: '❤️ Baladas Românticas Inesquecíveis', queries: ['karaoketa romanticas nacionais roupa nova fabio jr', 'karaoke wando reginaldo rossi jose augusto'] },
+  { label: '🌍 Pop Mundial & Billboard Hits', queries: ['karaoke pop hits bruno mars adele coldplay ed sheeran', 'karaoke greatest hits english instrumental'] },
+  { label: '🎤 Sertanejo Universitário & Sofrência', queries: ['karaoketa jorge e mateus henrique e juliano marilia mendonca', 'karaoke gusttavo lima cristiano araujo ze neto cristiano'] },
+  { label: '🕺 Tim Maia & Soul Funk Brasil', queries: ['karaoketa tim maia sandra de sa claudio zoli', 'karaoke soul funk brasil instrumental'] },
+  { label: '🌴 Reggae Nacional & Good Vibes', queries: ['karaoketa natiruts chimarruts armandinho maneva', 'karaoke reggae brasil instrumental'] },
+  { label: '🎶 Samba de Raiz & Partido Alto', queries: ['karaoketa samba de raiz fundo de quintal zeca pagodinho', 'karaoke beth carvalho jovelina almir guineto'] },
+  { label: '🎩 Brega Chique & Serestas de Ouro', queries: ['karaoketa brega seresta amado batista fagner', 'karaoke odair jose sidney magal altemar dutra'] },
+  { label: '🌟 Divas do Pop & Grandes Vozes', queries: ['karaoke pop divas whitney houston celine dion madonna', 'karaoke lady gaga rihanna shakira lyrics'] },
+  { label: '⚡ Hard Rock & Metal Classics', queries: ['karaoke guns n roses aerosmith acdc metallica', 'karaoke hard rock 80s instrumental lyrics'] },
+  { label: '🔥 As Mais Cantadas do Karaokê', queries: ['karaoketa mais cantadas de todos os tempos brasil', 'karaoke brasil mais tocadas todas as epocas'] },
 ];
 
-let globalPopularPresetIndex = 0;
+let lastPopularPresetIndex = -1;
 
 app.get('/api/popular-hits', async (req, res) => {
   try {
     const pageParam = req.query.page;
+    const isRandom = req.query.random === 'true' || req.query.t !== undefined;
+    const excludeIdsParam = String(req.query.excludeIds || '').trim();
+    const excludeSet = new Set(excludeIdsParam.split(',').map(s => s.trim()).filter(Boolean));
+
     let categoryIndex = 0;
-    if (pageParam !== undefined && pageParam !== null && !isNaN(parseInt(String(pageParam), 10))) {
+    if (isRandom) {
+      // Pick random index different from last one
+      do {
+        categoryIndex = Math.floor(Math.random() * POPULAR_SEARCH_PRESETS.length);
+      } while (POPULAR_SEARCH_PRESETS.length > 1 && categoryIndex === lastPopularPresetIndex);
+    } else if (pageParam !== undefined && pageParam !== null && !isNaN(parseInt(String(pageParam), 10))) {
       categoryIndex = Math.abs(parseInt(String(pageParam), 10)) % POPULAR_SEARCH_PRESETS.length;
     } else {
-      categoryIndex = (globalPopularPresetIndex++) % POPULAR_SEARCH_PRESETS.length;
+      categoryIndex = (lastPopularPresetIndex + 1) % POPULAR_SEARCH_PRESETS.length;
     }
+    lastPopularPresetIndex = categoryIndex;
 
     const preset = POPULAR_SEARCH_PRESETS[categoryIndex];
 
-    const r = await ytSearch(preset.query);
-    const candidates = [];
-    const seen = new Set();
+    // Shuffle queries to add unexpected freshness
+    const queries = shuffleArray(preset.queries || [preset.query]);
+    const allVideos = [];
 
-    if (r && Array.isArray(r.videos)) {
-      for (const v of r.videos) {
-        if (!v || !v.videoId) continue;
-        if (seen.has(v.videoId)) continue;
-        seen.add(v.videoId);
-
-        const titleLower = v.title.toLowerCase();
-        // Must be a karaoke track and not a massive multi-hour compilation
-        if (!/karaok[eê]|karaoketa|playback|instrumental|letra/i.test(titleLower)) continue;
-        if (v.seconds && (v.seconds > 660 || v.seconds < 90)) continue;
-
-        candidates.push(v);
-        if (candidates.length >= 14) break;
-      }
+    for (const q of queries) {
+      try {
+        const r = await ytSearch(q);
+        if (r && Array.isArray(r.videos)) {
+          allVideos.push(...r.videos);
+        }
+      } catch (e) {}
+      if (allVideos.length >= 35) break;
     }
 
-    // Verify embeddability via oEmbed
+    const seen = new Set();
+    const candidates = [];
+
+    for (const v of allVideos) {
+      if (!v || !v.videoId) continue;
+      if (seen.has(v.videoId)) continue;
+      if (excludeSet.has(v.videoId)) continue;
+      seen.add(v.videoId);
+
+      const titleLower = v.title.toLowerCase();
+      // Must be a karaoke track and not a massive multi-hour compilation
+      if (!/karaok[eê]|karaoketa|playback|instrumental|letra/i.test(titleLower)) continue;
+      if (v.seconds && (v.seconds > 660 || v.seconds < 90)) continue;
+
+      candidates.push(v);
+    }
+
+    // Shuffle candidate pool so order and selection are genuinely fresh every time
+    const shuffledCandidates = shuffleArray(candidates);
+
+    // Verify embeddability via oEmbed for top candidates
+    const checkBatch = shuffledCandidates.slice(0, 16);
     const verified = await Promise.all(
-      candidates.map(async v => {
+      checkBatch.map(async v => {
         const embeddable = await isVideoEmbeddable(v.videoId);
         return { video: v, embeddable };
       })

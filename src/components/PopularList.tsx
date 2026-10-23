@@ -17,6 +17,7 @@ export const PopularList: React.FC<PopularListProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [addedMap, setAddedMap] = useState<Record<string, boolean>>({});
   const pageRef = useRef<number>(0);
+  const seenIdsRef = useRef<Set<string>>(new Set(POPULAR_KARAOKE_HITS.map(h => h.id)));
 
   const handleReload = async () => {
     if (isLoading) return;
@@ -24,10 +25,12 @@ export const PopularList: React.FC<PopularListProps> = ({
     pageRef.current += 1;
 
     try {
-      const res = await fetch(`/api/popular-hits?page=${pageRef.current}`);
+      const excludeIds = Array.from(seenIdsRef.current).slice(-40).join(',');
+      const res = await fetch(`/api/popular-hits?page=${pageRef.current}&random=true&excludeIds=${encodeURIComponent(excludeIds)}&t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.songs) && data.songs.length > 0) {
+          data.songs.forEach((s: VideoItem) => seenIdsRef.current.add(s.id));
           setSongs(data.songs);
           if (data.category) setCategory(data.category);
         }

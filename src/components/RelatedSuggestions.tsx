@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, Play, Plus, Check, RotateCw, Music } from 'lucide-react';
 import type { VideoItem } from '../audio/types';
 
@@ -19,15 +19,19 @@ export const RelatedSuggestions: React.FC<RelatedSuggestionsProps> = ({
   const [contextArtist, setContextArtist] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [addedMap, setAddedMap] = useState<Record<string, boolean>>({});
+  const seenIdsRef = useRef<Set<string>>(new Set());
 
   const fetchSuggestions = async () => {
     if (!currentSong) return;
     setLoading(true);
     try {
-      const excludeIds = [
+      const excludeList = [
         currentSong.id,
         ...(playlist || []).map(p => p.id),
-      ].filter(Boolean).join(',');
+        ...Array.from(seenIdsRef.current),
+      ].filter(Boolean);
+
+      const excludeIds = Array.from(new Set(excludeList)).slice(-35).join(',');
 
       const playlistContext = (playlist || [])
         .slice(0, 3)
@@ -35,11 +39,27 @@ export const RelatedSuggestions: React.FC<RelatedSuggestionsProps> = ({
         .join(';');
 
       const res = await fetch(
-        `/api/suggestions?title=${encodeURIComponent(currentSong.title)}&excludeIds=${encodeURIComponent(excludeIds)}&playlistContext=${encodeURIComponent(playlistContext)}&limit=5`
+        `/api/suggestions?title=${encodeURIComponent(currentSong.title)}&excludeIds=${encodeURIComponent(excludeIds)}&playlistContext=${encodeURIComponent(playlistContext)}&limit=5&t=${Date.now()}`
       );
       if (res.ok) {
         const data = await res.json();
-        setSuggestions(data.suggestions || []);
+        const incoming = data.suggestions || [];
+        if (incoming.length > 0) {
+          incoming.forEach((s: VideoItem) => seenIdsRef.current.add(s.id));
+          setSuggestions(incoming);
+        } else if (seenIdsRef.current.size > 0) {
+          // If pool exhausted with all seen, reset cache and fetch fresh batch
+          seenIdsRef.current.clear();
+          const fallbackRes = await fetch(
+            `/api/suggestions?title=${encodeURIComponent(currentSong.title)}&excludeIds=${encodeURIComponent(currentSong.id)}&playlistContext=${encodeURIComponent(playlistContext)}&limit=5&t=${Date.now()}`
+          );
+          if (fallbackRes.ok) {
+            const fallbackData = await fallbackRes.json();
+            const fallbackItems = fallbackData.suggestions || [];
+            fallbackItems.forEach((s: VideoItem) => seenIdsRef.current.add(s.id));
+            setSuggestions(fallbackItems);
+          }
+        }
         if (data.contextArtist) {
           setContextArtist(data.contextArtist);
         }
@@ -52,6 +72,7 @@ export const RelatedSuggestions: React.FC<RelatedSuggestionsProps> = ({
   };
 
   useEffect(() => {
+    seenIdsRef.current.clear();
     fetchSuggestions();
   }, [currentSong.id]);
 
