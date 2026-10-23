@@ -22,8 +22,19 @@ interface KaraokePlayerProps {
   isStudioMode?: boolean;
   onToggleStudioMode?: () => void;
   currentRoom?: Room | null;
-  syncEvent?: { action: string; currentTime?: number; isPlaying?: boolean; timestamp: number } | null;
-  onBroadcastSync?: (action: 'play' | 'pause' | 'seek', currentTime?: number, isPlaying?: boolean) => void;
+  syncEvent?: { 
+    action: string; 
+    currentTime?: number; 
+    isPlaying?: boolean; 
+    timestamp: number;
+    sentAt?: number;
+    serverTime?: number;
+  } | null;
+  onBroadcastSync?: (
+    action: 'play' | 'pause' | 'seek' | 'heartbeat', 
+    currentTime?: number, 
+    isPlaying?: boolean
+  ) => void;
 }
 
 export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({ 
@@ -76,37 +87,58 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onToggleStudioMode]);
 
-  // Handle incoming synchronization events from other room participants
+  // Handle incoming synchronization events with centisecond precision & network latency compensation
   useEffect(() => {
     if (!syncEvent || !ytPlayerRef.current) return;
     const player = ytPlayerRef.current;
+
+    const now = Date.now();
+    const transitLatencySec = syncEvent.sentAt ? Math.max(0, (now - syncEvent.sentAt) / 1000) : 0;
+    
+    // When playing, compensate for the network transit time so both computers are on the exact same millisecond!
+    const targetTime = syncEvent.currentTime !== undefined
+      ? (syncEvent.isPlaying && syncEvent.action !== 'pause'
+          ? Math.round((syncEvent.currentTime + transitLatencySec) * 100) / 100
+          : syncEvent.currentTime)
+      : undefined;
+
     isRemoteSyncRef.current = true;
 
     try {
       if (syncEvent.action === 'play') {
-        if (syncEvent.currentTime !== undefined) {
+        if (targetTime !== undefined) {
           const cur = typeof player.getCurrentTime === 'function' ? player.getCurrentTime() : 0;
-          if (Math.abs(cur - syncEvent.currentTime) > 1.5) {
-            player.seekTo?.(syncEvent.currentTime, true);
+          if (Math.abs(cur - targetTime) > 0.15) {
+            player.seekTo?.(targetTime, true);
           }
         }
         player.playVideo?.();
-        lastReportedTimeRef.current = syncEvent.currentTime || 0;
+        lastReportedTimeRef.current = targetTime || 0;
       } else if (syncEvent.action === 'pause') {
-        if (syncEvent.currentTime !== undefined) {
-          player.seekTo?.(syncEvent.currentTime, true);
+        if (targetTime !== undefined) {
+          player.seekTo?.(targetTime, true);
         }
         player.pauseVideo?.();
-        lastReportedTimeRef.current = syncEvent.currentTime || 0;
+        lastReportedTimeRef.current = targetTime || 0;
       } else if (syncEvent.action === 'seek') {
-        if (syncEvent.currentTime !== undefined) {
-          player.seekTo?.(syncEvent.currentTime, true);
-          lastReportedTimeRef.current = syncEvent.currentTime;
+        if (targetTime !== undefined) {
+          player.seekTo?.(targetTime, true);
+          lastReportedTimeRef.current = targetTime;
         }
         if (syncEvent.isPlaying === true) {
           player.playVideo?.();
         } else if (syncEvent.isPlaying === false) {
           player.pauseVideo?.();
+        }
+      } else if (syncEvent.action === 'heartbeat') {
+        // Continuous Equalization Engine: if players drift apart by more than 180ms, micro-align them
+        if (targetTime !== undefined && syncEvent.isPlaying) {
+          const cur = typeof player.getCurrentTime === 'function' ? player.getCurrentTime() : 0;
+          const drift = cur - targetTime;
+          if (Math.abs(drift) > 0.18) {
+            player.seekTo?.(targetTime, true);
+            lastReportedTimeRef.current = targetTime;
+          }
         }
       }
     } catch (err) {
@@ -115,7 +147,7 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
 
     const t = setTimeout(() => {
       isRemoteSyncRef.current = false;
-    }, 1000);
+    }, 700);
     return () => clearTimeout(t);
   }, [syncEvent]);
 
@@ -192,9 +224,9 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
 
               // YT.PlayerState.PLAYING = 1 (Play nativo ou retomada)
               if (event.data === 1) {
-                const time = Math.floor(event.target.getCurrentTime ? event.target.getCurrentTime() : 0);
+                const time = Math.round((event.target.getCurrentTime ? event.target.getCurrentTime() : 0) * 100) / 100;
                 // Se o tempo pulou significativamente, foi um seek seguido de play
-                if (Math.abs(time - lastReportedTimeRef.current) > 2) {
+                if (Math.abs(time - lastReportedTimeRef.current) > 1.2) {
                   onBroadcastSync('seek', time, true);
                 } else {
                   onBroadcastSync('play', time, true);
@@ -203,7 +235,7 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
               }
               // YT.PlayerState.PAUSED = 2 (Pause nativo ao clicar no vídeo)
               else if (event.data === 2) {
-                const time = Math.floor(event.target.getCurrentTime ? event.target.getCurrentTime() : 0);
+                const time = Math.round((event.target.getCurrentTime ? event.target.getCurrentTime() : 0) * 100) / 100;
                 onBroadcastSync('pause', time, false);
                 lastReportedTimeRef.current = time;
               }
@@ -226,7 +258,7 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
     };
   }, [currentSong?.id, onBroadcastSync]);
 
-  // Periodic Scrubber/Timeline Sync Check (Detecção em tempo real de avançar/retroceder na barra do YouTube)
+  // Periodic Scrubber/Timeline Sync Check (Detecção em tempo real com alta resolução)
   useEffect(() => {
     const timer = setInterval(() => {
       if (!ytPlayerRef.current || isRemoteSyncRef.current || !onBroadcastSync) return;
@@ -239,32 +271,54 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
 
         // Se está tocando (state 1) e o usuário pulou a barra do YouTube (delta inesperado)
         if (state === 1) {
-          const expected = lastReportedTimeRef.current + 0.35;
-          if (Math.abs(curTime - expected) > 1.8) {
-            const floored = Math.floor(curTime);
-            if (Math.abs(floored - lastBroadcastTimeRef.current) >= 1) {
-              lastBroadcastTimeRef.current = floored;
-              onBroadcastSync('seek', floored, true);
+          const expected = lastReportedTimeRef.current + 0.3;
+          if (Math.abs(curTime - expected) > 1.2) {
+            const precise = Math.round(curTime * 100) / 100;
+            if (Math.abs(precise - lastBroadcastTimeRef.current) >= 0.3) {
+              lastBroadcastTimeRef.current = precise;
+              onBroadcastSync('seek', precise, true);
             }
           }
           lastReportedTimeRef.current = curTime;
         } 
-        // Se está pausado (state 2) e o usuário arrastou a barra para outro minuto/segundo
+        // Se está pausado (state 2) e o usuário arrastou a barra para outro centésimo
         else if (state === 2) {
-          if (Math.abs(curTime - lastReportedTimeRef.current) > 1.0) {
-            const floored = Math.floor(curTime);
-            if (Math.abs(floored - lastBroadcastTimeRef.current) >= 1) {
-              lastBroadcastTimeRef.current = floored;
-              onBroadcastSync('seek', floored, false);
+          if (Math.abs(curTime - lastReportedTimeRef.current) > 0.25) {
+            const precise = Math.round(curTime * 100) / 100;
+            if (Math.abs(precise - lastBroadcastTimeRef.current) >= 0.15) {
+              lastBroadcastTimeRef.current = precise;
+              onBroadcastSync('seek', precise, false);
             }
           }
           lastReportedTimeRef.current = curTime;
         }
       } catch (e) {}
-    }, 350);
+    }, 300);
 
     return () => clearInterval(timer);
   }, [onBroadcastSync]);
+
+  // Continuous Synchronization Equalizer Heartbeat (Runs every 1.5s when playing in an online room)
+  useEffect(() => {
+    if (!currentRoom || !onBroadcastSync) return;
+
+    const heartbeatTimer = setInterval(() => {
+      if (!ytPlayerRef.current || isRemoteSyncRef.current) return;
+      try {
+        const player = ytPlayerRef.current;
+        const state = typeof player.getPlayerState === 'function' ? player.getPlayerState() : null;
+        if (state === 1) { // Only while actively playing
+          const curTime = typeof player.getCurrentTime === 'function' ? player.getCurrentTime() : null;
+          if (typeof curTime === 'number' && !isNaN(curTime) && curTime > 0) {
+            const precise = Math.round(curTime * 100) / 100;
+            onBroadcastSync('heartbeat', precise, true);
+          }
+        }
+      } catch (e) {}
+    }, 1500);
+
+    return () => clearInterval(heartbeatTimer);
+  }, [currentRoom?.id, onBroadcastSync]);
 
   if (!currentSong) return null;
 

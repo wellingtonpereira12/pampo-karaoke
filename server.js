@@ -227,7 +227,7 @@ app.use((req, res) => {
 function serializeRoom(room) {
   let currentTime = room.currentTime || 0;
   if (room.isPlaying && room.startedAt > 0) {
-    currentTime = Math.max(0, Math.floor((Date.now() - room.startedAt) / 1000));
+    currentTime = Math.max(0, Math.round(((Date.now() - room.startedAt) / 1000) * 100) / 100);
   }
   return {
     id: room.id,
@@ -408,13 +408,14 @@ io.on('connection', socket => {
     currentRoomId = null;
   });
 
-  // 4. Synchronized Video Playback ("Assistir Juntos" no estilo FakeDC)
-  socket.on('sync_video_action', ({ action, song, currentTime, isPlaying, user }) => {
+  // 4. Synchronized Video Playback ("Assistir Juntos" no estilo FakeDC com Equalização Contínua)
+  socket.on('sync_video_action', ({ action, song, currentTime, isPlaying, user, sentAt }) => {
     if (!currentRoomId) return;
     const room = rooms.get(currentRoomId);
     if (!room) return;
 
     const curTime = typeof currentTime === 'number' ? currentTime : (room.currentTime || 0);
+    const originTimestamp = sentAt || Date.now();
 
     if (action === 'change_song') {
       room.currentSong = song;
@@ -434,19 +435,29 @@ io.on('connection', socket => {
       if (room.isPlaying) {
         room.startedAt = Date.now() - (curTime * 1000);
       }
+    } else if (action === 'heartbeat') {
+      room.currentTime = curTime;
+      if (room.isPlaying && room.startedAt > 0) {
+        // Continuously calibrate startedAt reference timeline with micro-precision
+        room.startedAt = Date.now() - (curTime * 1000);
+      }
     }
 
-    // Broadcast sync event to all other members in room
+    // Broadcast sync event to all other members in room with precise timestamp & transit tracking
     socket.to(currentRoomId).emit('sync_video_action', {
       action,
       song: room.currentSong,
       currentTime: curTime,
       isPlaying: room.isPlaying,
       user,
+      sentAt: originTimestamp,
+      serverTime: Date.now(),
     });
 
-    // Also update room snapshot
-    io.to(currentRoomId).emit('room_updated', serializeRoom(room));
+    // Broadcast room_updated snapshot on discrete user actions
+    if (action !== 'heartbeat') {
+      io.to(currentRoomId).emit('room_updated', serializeRoom(room));
+    }
   });
 
   // 5. Room Chat Message

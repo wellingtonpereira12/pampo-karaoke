@@ -168,7 +168,15 @@ class SocketService {
     });
   }
 
-  public syncVideoAction(roomId: string, action: 'play' | 'pause' | 'seek' | 'change_song', song?: VideoItem | null, currentTime?: number, isPlaying?: boolean, user?: User) {
+  public syncVideoAction(
+    roomId: string, 
+    action: 'play' | 'pause' | 'seek' | 'change_song' | 'heartbeat', 
+    song?: VideoItem | null, 
+    currentTime?: number, 
+    isPlaying?: boolean, 
+    user?: User,
+    sentAt: number = Date.now()
+  ) {
     this.socket?.emit('sync_video_action', {
       roomId,
       action,
@@ -176,6 +184,7 @@ class SocketService {
       currentTime,
       isPlaying,
       user,
+      sentAt,
     });
   }
 

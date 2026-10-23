@@ -31,7 +31,14 @@ export function App() {
   
   // Online Room State (Discord Style)
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
-  const [syncEvent, setSyncEvent] = useState<{ action: string; currentTime?: number; isPlaying?: boolean; timestamp: number } | null>(null);
+  const [syncEvent, setSyncEvent] = useState<{ 
+    action: string; 
+    currentTime?: number; 
+    isPlaying?: boolean; 
+    timestamp: number;
+    sentAt?: number;
+    serverTime?: number;
+  } | null>(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(true);
   const lastSyncMessageTimeRef = useRef<number>(0);
   
@@ -64,12 +71,16 @@ export function App() {
       song, 
       currentTime, 
       isPlaying,
+      sentAt,
+      serverTime,
     }: { 
       action: string; 
       song: VideoItem | null; 
       currentTime?: number; 
       isPlaying?: boolean; 
-      user?: unknown; 
+      user?: unknown;
+      sentAt?: number;
+      serverTime?: number;
     }) => {
       if (action === 'change_song') {
         setCurrentSong(song);
@@ -85,6 +96,8 @@ export function App() {
           currentTime,
           isPlaying,
           timestamp: Date.now(),
+          sentAt: sentAt || Date.now(),
+          serverTime: serverTime || Date.now(),
         });
       }
     };
@@ -225,22 +238,25 @@ export function App() {
     }
   };
 
-  const handleBroadcastSync = (action: 'play' | 'pause' | 'seek', currentTime?: number, isPlaying?: boolean) => {
+  const handleBroadcastSync = (action: 'play' | 'pause' | 'seek' | 'heartbeat', currentTime?: number, isPlaying?: boolean) => {
     if (action === 'play') setIsVideoPlaying(true);
     if (action === 'pause') setIsVideoPlaying(false);
 
     if (!currentRoom) return;
-    socketService.syncVideoAction(currentRoom.id, action, currentSong, currentTime, isPlaying, user || undefined);
+    socketService.syncVideoAction(currentRoom.id, action, currentSong, currentTime, isPlaying, user || undefined, Date.now());
     
-    const now = Date.now();
-    if (now - lastSyncMessageTimeRef.current > 3000) {
-      lastSyncMessageTimeRef.current = now;
-      const actionLabel = action === 'play'
-        ? '▶ Deu play no vídeo'
-        : action === 'pause'
-          ? '⏸ Pausou o vídeo'
-          : `⏩ Sincronizou vídeo em ${Math.floor(currentTime || 0)}s`;
-      socketService.sendChatMessage(actionLabel, 'system');
+    // Only send chat feedback on manual actions, never on automatic equalizing heartbeats
+    if (action !== 'heartbeat') {
+      const now = Date.now();
+      if (now - lastSyncMessageTimeRef.current > 3000) {
+        lastSyncMessageTimeRef.current = now;
+        const actionLabel = action === 'play'
+          ? '▶ Deu play no vídeo'
+          : action === 'pause'
+            ? '⏸ Pausou o vídeo'
+            : `⏩ Sincronizou vídeo em ${Math.floor(currentTime || 0)}s`;
+        socketService.sendChatMessage(actionLabel, 'system');
+      }
     }
   };
 
