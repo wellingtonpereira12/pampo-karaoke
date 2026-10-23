@@ -34,6 +34,7 @@ export function App() {
   
   const [masterVolume, setMasterVolume] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isStudioMode, setIsStudioMode] = useState(false);
 
   // Sync fullscreen state
   useEffect(() => {
@@ -245,7 +246,9 @@ export function App() {
       )}
 
       {/* Main Content Area (shifted right if in room) */}
-      <main className={`relative z-10 flex-1 flex flex-col items-center justify-start w-full max-w-7xl mx-auto px-2 sm:px-4 py-3 transition-all ${
+      <main className={`relative z-10 flex-1 flex flex-col items-center justify-start w-full mx-auto px-2 sm:px-4 py-3 transition-all duration-300 ${
+        isStudioMode && currentSong ? 'max-w-[98vw] md:px-6' : 'max-w-7xl'
+      } ${
         currentRoom ? 'md:pl-80' : ''
       }`}>
         {/* Microphone Rack */}
@@ -265,7 +268,7 @@ export function App() {
           {currentSong ? (
             <div className="w-full flex flex-col items-center gap-4">
               {/* Compact Search Bar above video to easily change songs */}
-              <div className="w-full max-w-3xl">
+              <div className={`w-full ${isStudioMode ? 'max-w-5xl' : 'max-w-3xl'} transition-all duration-300`}>
                 <SearchBar onSelectSong={handleSelectSong} isCompact />
               </div>
 
@@ -274,6 +277,8 @@ export function App() {
                 currentSong={currentSong}
                 onChangeSong={() => setCurrentSong(null)}
                 onSearchAlternative={handleSearchAlternative}
+                isStudioMode={isStudioMode}
+                onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
               />
             </div>
           ) : (
