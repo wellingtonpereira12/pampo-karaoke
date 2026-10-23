@@ -87,10 +87,6 @@ export const RelatedSuggestions: React.FC<RelatedSuggestionsProps> = ({
     }
   };
 
-  if (!loading && suggestions.length === 0) {
-    return null;
-  }
-
   return (
     <div className="w-full rounded-3xl bg-[#0d101a]/90 border border-slate-800/90 shadow-2xl backdrop-blur-md p-4 sm:p-5 flex flex-col transition-all hover:border-pink-500/30 animate-fadeIn">
       {/* Header */}
@@ -121,8 +117,8 @@ export const RelatedSuggestions: React.FC<RelatedSuggestionsProps> = ({
         </button>
       </div>
 
-      {/* Loading Skeleton */}
-      {loading ? (
+      {/* Loading Skeleton if no items yet */}
+      {loading && suggestions.length === 0 ? (
         <div className="space-y-3 py-2">
           {[1, 2, 3, 4].map(idx => (
             <div key={idx} className="flex items-center gap-3 p-2 rounded-2xl bg-slate-900/60 animate-pulse">
@@ -134,9 +130,9 @@ export const RelatedSuggestions: React.FC<RelatedSuggestionsProps> = ({
             </div>
           ))}
         </div>
-      ) : (
-        /* Suggestions List */
-        <div className="space-y-2.5">
+      ) : suggestions.length > 0 ? (
+        /* Suggestions List (keeps visible while background loading) */
+        <div className={`space-y-2.5 transition-opacity duration-200 ${loading ? 'opacity-60' : 'opacity-100'}`}>
           {suggestions.map(song => {
             const isAdded = !!addedMap[song.id];
 
@@ -199,6 +195,16 @@ export const RelatedSuggestions: React.FC<RelatedSuggestionsProps> = ({
               </div>
             );
           })}
+        </div>
+      ) : (
+        <div className="py-6 px-4 rounded-2xl border border-dashed border-slate-800 text-center">
+          <p className="text-xs text-slate-400">Buscando mais sugestões...</p>
+          <button
+            onClick={fetchSuggestions}
+            className="mt-2 px-3 py-1 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/40 text-xs font-semibold transition"
+          >
+            Carregar Novas
+          </button>
         </div>
       )}
 

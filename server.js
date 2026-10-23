@@ -365,36 +365,44 @@ app.get('/api/suggestions', async (req, res) => {
 
     const isKaraokeTrack = (title, channel) => {
       const text = `${title} ${channel}`.toLowerCase();
-      return /karaok[eê]|karaoketa|playback|instrumental|com letra/i.test(text);
+      return /karaok[eê]|karaoketa|playback|instrumental|com letra|sem vocal/i.test(text);
     };
 
-    // Clean tags like (Karaokê), [Playback], etc.
+    // Clean tags like (Karaokê), [Playback], etc. without deleting the rest of the song title!
     let clean = rawTitle
       .replace(/\(.*?\)/gi, '')
       .replace(/\[.*?\]/gi, '')
+      .replace(/\{.*?\}/gi, '')
       .replace(/\|.*$/gi, '')
-      .replace(/Karaok[eê].*$/gi, '')
-      .replace(/Playback.*$/gi, '')
-      .replace(/Instrumental.*$/gi, '')
+      .replace(/\b(?:karaok[eê]|karaoketa|playback|instrumental|com\s+letra|sem\s+vocal|vers[aã]o\s+karaok[eê]|karaoke\s+version|oficial|official)\b/gi, '')
       .trim();
 
-    const parts = clean.split(/[-–—•]/).map(p => p.trim()).filter(Boolean);
-    const artistClues = /&|\be\b|\bfeat\b|\bft\b|\bdupla\b|\bbanda\b|\btrio\b|\bmc\b|\bdj\b/i;
+    // Split by common delimiters (-, –, —, •, /, :, |)
+    const parts = clean
+      .split(/[-–—•/:|]+/)
+      .map(p => p.trim().replace(/^[-–—•/:|\s]+|[-–—•/:|\s]+$/g, ''))
+      .filter(p => p.length >= 2 && !/^(karaok[eê]|karaoketa|playback|instrumental|versao|version)$/i.test(p));
+
+    // Filter out common channel prefixes
+    const channelNames = /^(gab|muramatsu|ponto do|singer|clubinho|viny teclas|musisi|ft|karafun|sing king|mega|karaoke show|show)/i;
+    const filtered = parts.filter(p => !channelNames.test(p));
+    const usable = filtered.length > 0 ? filtered : parts;
 
     let artist = '';
     let songName = '';
+    const artistClues = /&|\be\b|\bfeat\b|\bft\b|\bdupla\b|\bbanda\b|\btrio\b|\bmc\b|\bdj\b/i;
 
-    if (parts.length >= 2) {
-      if (artistClues.test(parts[1]) && !artistClues.test(parts[0])) {
-        artist = parts[1];
-        songName = parts[0];
+    if (usable.length >= 2) {
+      if (artistClues.test(usable[1]) && !artistClues.test(usable[0])) {
+        artist = usable[1];
+        songName = usable[0];
       } else {
-        artist = parts[0];
-        songName = parts[1];
+        artist = usable[0];
+        songName = usable[1];
       }
-    } else if (parts.length === 1) {
-      artist = parts[0];
-      songName = parts[0];
+    } else if (usable.length === 1) {
+      artist = usable[0];
+      songName = usable[0];
     }
 
     const songNorm = norm(songName);
@@ -404,7 +412,7 @@ app.get('/api/suggestions', async (req, res) => {
       excludeIdsParam.split(',').map(s => s.trim()).filter(Boolean)
     );
 
-    // Build focused search prompts strictly requesting KARAOKETA versions
+    // Build focused search prompts requesting KARAOKETA versions
     const searchPrompts = [
       `${artist} outros sucessos karaoketa instrumental`,
       `${artist} mais tocadas karaoketa com letra`,
@@ -412,12 +420,16 @@ app.get('/api/suggestions', async (req, res) => {
       `${artist} karaoketa`,
     ];
 
+    if (songName && songName !== artist) {
+      searchPrompts.push(`${artist} ${songName} estilo karaoketa`);
+    }
+
     // If user has other songs in their playlist, add search prompts for them too
     if (playlistContext) {
       const extraTitles = playlistContext.split(';').map(t => t.trim()).filter(Boolean);
       for (const extraTitle of extraTitles) {
         const extraClean = extraTitle.replace(/\(.*?\)/gi, '').replace(/\[.*?\]/gi, '').trim();
-        const extraParts = extraClean.split(/[-–—•]/).map(p => p.trim()).filter(Boolean);
+        const extraParts = extraClean.split(/[-–—•/:|]+/).map(p => p.trim()).filter(Boolean);
         const extraArtist = extraParts[0] || extraClean;
         if (extraArtist && norm(extraArtist) !== norm(artist)) {
           searchPrompts.push(`${extraArtist} sucessos karaoketa`);
@@ -466,11 +478,35 @@ app.get('/api/suggestions', async (req, res) => {
       if (candidateList.length >= 25) break;
     }
 
+    // SMART FALLBACK: If candidate list has fewer than 6 items, automatically supplement with top karaoke hits
+    if (candidateList.length < 8) {
+      const fallbackQueries = [
+        'karaoketa mais tocadas brasil instrumental',
+        'karaoke brasil classicos inesqueciveis com letra',
+        'karaoketa maiores sucessos de todos os tempos'
+      ];
+      for (const fq of fallbackQueries) {
+        try {
+          const fr = await ytSearch(fq);
+          if (fr && Array.isArray(fr.videos)) {
+            for (const fv of fr.videos) {
+              if (!fv || !fv.videoId || seen.has(fv.videoId) || excludeSet.has(fv.videoId)) continue;
+              if (!isKaraokeTrack(fv.title, fv.author?.name || '')) continue;
+              seen.add(fv.videoId);
+              candidateList.push(fv);
+              if (candidateList.length >= 20) break;
+            }
+          }
+        } catch (e) {}
+        if (candidateList.length >= 20) break;
+      }
+    }
+
     // Shuffle candidates to ensure fresh variety on every reload
     const shuffledCandidates = shuffleArray(candidateList);
 
     // Verify embeddability so no Error 150 blocked videos are suggested
-    const checkBatch = shuffledCandidates.slice(0, 16);
+    const checkBatch = shuffledCandidates.slice(0, 18);
     const verified = await Promise.all(
       checkBatch.map(async v => {
         const embeddable = await isVideoEmbeddable(v.videoId);
