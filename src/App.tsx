@@ -7,6 +7,7 @@ import { PopularList } from './components/PopularList';
 import { EffectsPanel } from './components/EffectsPanel';
 import { AddInputModal } from './components/AddInputModal';
 import { SpeakerModal } from './components/SpeakerModal';
+import { DiscoBall } from './components/DiscoBall';
 import { AudioEngine } from './audio/AudioEngine';
 import type { ConnectedMicInfo, EffectPresetId, EffectSettings, VideoItem } from './audio/types';
 
@@ -107,7 +108,13 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0c0e14] text-slate-100 flex flex-col justify-between selection:bg-emerald-500 selection:text-slate-950">
+    <div className="relative min-h-screen retro-80s-bg text-slate-100 flex flex-col justify-between selection:bg-pink-500 selection:text-slate-950 overflow-x-hidden">
+      {/* 80s Disco Ball with Sweeping Light Beams */}
+      <DiscoBall />
+
+      {/* Retro 80s Perspective Floor Grid */}
+      <div className="retro-perspective-grid" />
+
       {/* Header */}
       <Header
         onOpenAddInput={() => setIsAddInputModalOpen(true)}
@@ -118,7 +125,7 @@ export function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col items-center justify-start w-full max-w-7xl mx-auto px-2 sm:px-4 py-3">
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-start w-full max-w-7xl mx-auto px-2 sm:px-4 py-3">
         {/* Microphone Rack */}
         <MicRack
           mics={mics}
@@ -148,14 +155,19 @@ export function App() {
               />
             </div>
           ) : (
-            <div className="w-full flex flex-col items-center justify-center py-6 md:py-10">
-              {/* Central Google-style Search Bar */}
+            <div className="w-full flex flex-col items-center justify-center py-6 md:py-8">
+              {/* Central Google-style Search Bar with 80s Retro Glow */}
               <div className="text-center mb-6">
-                <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white mb-2">
-                  Pampo Karaokê
-                </h2>
-                <p className="text-xs md:text-sm text-slate-400">
-                  Pesquise sua música favorita ou cole o link do YouTube para começar
+                <div className="inline-block relative">
+                  <h2 className="text-3xl md:text-5xl font-black tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-300 to-cyan-300 drop-shadow-[0_0_15px_rgba(236,72,153,0.5)]">
+                    Pampo Karaokê
+                  </h2>
+                  <span className="block text-[11px] font-bold tracking-[0.3em] uppercase text-cyan-400/90 mt-1">
+                    ★ DISCO & VINTAGE STAGE ★
+                  </span>
+                </div>
+                <p className="text-xs md:text-sm text-slate-400 mt-2">
+                  Pesquise seu hit favorito ou cole o link do YouTube para soltar a voz
                 </p>
               </div>
 
@@ -172,13 +184,15 @@ export function App() {
       </main>
 
       {/* Effects Panel at the bottom */}
-      <EffectsPanel
-        mics={mics}
-        selectedMicId={selectedMicForEffects}
-        onSelectMic={id => setSelectedMicForEffects(id)}
-        onApplyPreset={handleApplyPreset}
-        onUpdateSettings={handleUpdateEffectSettings}
-      />
+      <div className="relative z-10">
+        <EffectsPanel
+          mics={mics}
+          selectedMicId={selectedMicForEffects}
+          onSelectMic={id => setSelectedMicForEffects(id)}
+          onApplyPreset={handleApplyPreset}
+          onUpdateSettings={handleUpdateEffectSettings}
+        />
+      </div>
 
       {/* Modals */}
       <AddInputModal

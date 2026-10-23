@@ -9,11 +9,62 @@
 body {
   margin: 0;
   padding: 0;
-  background-color: #0c0e14;
+  background-color: #0b0d14;
   color: #e2e8f0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   overflow-x: hidden;
   user-select: none;
+}
+
+/* 80s Retro Atmosphere & Synthwave Grid */
+.retro-80s-bg {
+  background: 
+    radial-gradient(ellipse at 50% 0%, rgba(217, 70, 239, 0.15) 0%, rgba(14, 165, 233, 0.08) 40%, rgba(11, 13, 20, 0) 70%),
+    radial-gradient(circle at 80% 90%, rgba(236, 72, 153, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 20% 90%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+    #0b0d14;
+}
+
+/* Subtle 80s retro perspective grid floor */
+.retro-perspective-grid {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 38vh;
+  background-image: 
+    linear-gradient(to right, rgba(236, 72, 153, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(6, 182, 212, 0.07) 1px, transparent 1px);
+  background-size: 50px 30px;
+  transform: perspective(350px) rotateX(65deg);
+  transform-origin: bottom center;
+  pointer-events: none;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
+  z-index: 0;
+}
+
+/* Disco Ball Mirror Facets pattern */
+.bg-disco-facets {
+  background-image: 
+    linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(255,255,255,0.4) 1px, transparent 1px);
+  background-size: 7px 7px;
+  background-repeat: repeat;
+  mix-blend-mode: overlay;
+}
+
+@keyframes discoSpin {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 100px 0;
+  }
+}
+
+.animate-disco-spin {
+  animation: discoSpin 7s linear infinite;
 }
 
 /* Custom scrollbars */
@@ -85,4 +136,13 @@ input[type=range]::-webkit-slider-thumb:hover {
 
 .mic-active-ring {
   animation: ring-pulse 2s infinite;
+}
+
+/* Neon Glows 80s */
+.shadow-neon-pink {
+  box-shadow: 0 0 15px rgba(236, 72, 153, 0.5), 0 0 30px rgba(236, 72, 153, 0.2);
+}
+
+.shadow-neon-cyan {
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.5), 0 0 30px rgba(6, 182, 212, 0.2);
 }
