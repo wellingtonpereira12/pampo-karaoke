@@ -12,6 +12,7 @@ import { RoomsModal } from './components/RoomsModal';
 import { RoomSidebar } from './components/RoomSidebar';
 import { GoogleLoginModal } from './components/GoogleLoginModal';
 import { PlaylistDrawer } from './components/PlaylistDrawer';
+import { RelatedSuggestions } from './components/RelatedSuggestions';
 import { useAuth } from './context/AuthContext';
 import { socketService } from './services/socketService';
 import { AudioEngine } from './audio/AudioEngine';
@@ -479,7 +480,7 @@ export function App() {
             <div className="w-full flex flex-col items-center gap-2">
               {/* Compact Search Bar above video to easily change songs (only in normal mode) */}
               {!isStudioMode && (
-                <div className="w-full max-w-3xl transition-all duration-300">
+                <div className="w-full max-w-4xl transition-all duration-300">
                   <SearchBar 
                     onSelectSong={handleSelectSong} 
                     onAddToPlaylist={handleAddToPlaylist}
@@ -488,28 +489,67 @@ export function App() {
                 </div>
               )}
 
-              {/* Large YouTube Karaoke Stage Display with Room Sync & Playlist */}
-              <KaraokePlayer
-                currentSong={currentSong}
-                onChangeSong={() => {
-                  setCurrentSong(null);
-                  if (currentRoom) {
-                    socketService.syncVideoAction(currentRoom.id, 'change_song', null, 0, false, user || undefined);
-                    socketService.sendChatMessage('⏹ Removeu a música atual', 'system');
-                  }
-                }}
-                onSearchAlternative={handleSearchAlternative}
-                onAutoSwitchSong={handleSelectSong}
-                isStudioMode={isStudioMode}
-                onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
-                currentRoom={currentRoom}
-                syncEvent={syncEvent}
-                onBroadcastSync={handleBroadcastSync}
-                playlistCount={activePlaylist.length}
-                onOpenPlaylist={() => setIsPlaylistOpen(true)}
-                onPlayNextSong={handlePlayNextSong}
-                onSongEnded={handleSongEnded}
-              />
+              {/* Stage Layout: In Normal Mode, 2-column grid with Suggestions in the corner/side */}
+              {!isStudioMode ? (
+                <div className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                  {/* Main Video Player */}
+                  <div className="w-full lg:col-span-8 xl:col-span-8 flex flex-col gap-2">
+                    <KaraokePlayer
+                      currentSong={currentSong}
+                      onChangeSong={() => {
+                        setCurrentSong(null);
+                        if (currentRoom) {
+                          socketService.syncVideoAction(currentRoom.id, 'change_song', null, 0, false, user || undefined);
+                          socketService.sendChatMessage('⏹ Removeu a música atual', 'system');
+                        }
+                      }}
+                      onSearchAlternative={handleSearchAlternative}
+                      onAutoSwitchSong={handleSelectSong}
+                      isStudioMode={isStudioMode}
+                      onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
+                      currentRoom={currentRoom}
+                      syncEvent={syncEvent}
+                      onBroadcastSync={handleBroadcastSync}
+                      playlistCount={activePlaylist.length}
+                      onOpenPlaylist={() => setIsPlaylistOpen(true)}
+                      onPlayNextSong={handlePlayNextSong}
+                      onSongEnded={handleSongEnded}
+                    />
+                  </div>
+
+                  {/* Corner Suggestions Panel (Only visible in normal mode as requested) */}
+                  <div className="w-full lg:col-span-4 xl:col-span-4 flex flex-col gap-3">
+                    <RelatedSuggestions
+                      currentSong={currentSong}
+                      onSelectSong={handleSelectSong}
+                      onAddToPlaylist={handleAddToPlaylist}
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* Studio Mode: Full stage width without side suggestions */
+                <KaraokePlayer
+                  currentSong={currentSong}
+                  onChangeSong={() => {
+                    setCurrentSong(null);
+                    if (currentRoom) {
+                      socketService.syncVideoAction(currentRoom.id, 'change_song', null, 0, false, user || undefined);
+                      socketService.sendChatMessage('⏹ Removeu a música atual', 'system');
+                    }
+                  }}
+                  onSearchAlternative={handleSearchAlternative}
+                  onAutoSwitchSong={handleSelectSong}
+                  isStudioMode={isStudioMode}
+                  onToggleStudioMode={() => setIsStudioMode(prev => !prev)}
+                  currentRoom={currentRoom}
+                  syncEvent={syncEvent}
+                  onBroadcastSync={handleBroadcastSync}
+                  playlistCount={activePlaylist.length}
+                  onOpenPlaylist={() => setIsPlaylistOpen(true)}
+                  onPlayNextSong={handlePlayNextSong}
+                  onSongEnded={handleSongEnded}
+                />
+              )}
             </div>
           ) : (
             <div className="w-full flex flex-col items-center justify-center py-6 md:py-8">

@@ -248,6 +248,106 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+// YouTube related karaoke suggestions endpoint (baseado na música atual, mas excluindo a mesma faixa)
+app.get('/api/suggestions', async (req, res) => {
+  try {
+    const rawTitle = String(req.query.title || '').trim();
+    const excludeId = String(req.query.excludeId || '').trim();
+    const limit = parseInt(String(req.query.limit || '5'), 10);
+
+    if (!rawTitle) {
+      return res.json({ suggestions: [], contextArtist: '' });
+    }
+
+    const norm = str => str.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+
+    let clean = rawTitle
+      .replace(/\(Karaok[eê].*?\)/gi, '')
+      .replace(/\[.*?\]/g, '')
+      .replace(/\|.*$/g, '')
+      .replace(/Karaok[eê].*$/gi, '')
+      .trim();
+
+    const parts = clean.split(/[-–—]/).map(p => p.trim()).filter(Boolean);
+    let searchTerms = [];
+    let excludedParts = [];
+    let contextArtist = '';
+
+    if (parts.length >= 2) {
+      searchTerms.push(`${parts[0]} maiores sucessos karaoke instrumental`);
+      searchTerms.push(`${parts[1]} maiores sucessos karaoke instrumental`);
+      searchTerms.push(`${parts[0]} karaoke`);
+      searchTerms.push(`${parts[1]} karaoke`);
+      excludedParts = parts.map(norm);
+      contextArtist = parts[0];
+    } else {
+      searchTerms.push(`${clean} karaoke hits`);
+      excludedParts = [norm(clean)];
+      contextArtist = clean;
+    }
+
+    const allVideos = [];
+    for (const term of searchTerms) {
+      try {
+        const r = await ytSearch(term);
+        if (r && Array.isArray(r.videos)) {
+          allVideos.push(...r.videos);
+        }
+      } catch (e) {}
+      if (allVideos.length >= 16) break;
+    }
+
+    const seen = new Set();
+    const candidateList = [];
+
+    for (const v of allVideos) {
+      if (!v || !v.videoId) continue;
+      if (v.videoId === excludeId) continue;
+      if (seen.has(v.videoId)) continue;
+      seen.add(v.videoId);
+
+      const titleNorm = norm(v.title);
+
+      // Se contém ambas as partes normalizadas, é outra versão da MESMA música! Exclui!
+      if (excludedParts.length >= 2) {
+        if (titleNorm.includes(excludedParts[0]) && titleNorm.includes(excludedParts[1])) {
+          continue;
+        }
+      }
+
+      candidateList.push(v);
+      if (candidateList.length >= 12) break;
+    }
+
+    // Verificação rápida de incorporação para entregar apenas sugestões 100% tocáveis
+    const verified = await Promise.all(
+      candidateList.map(async v => {
+        const embeddable = await isVideoEmbeddable(v.videoId);
+        return { video: v, embeddable };
+      })
+    );
+
+    const playable = verified.filter(c => c.embeddable).map(c => c.video).slice(0, limit);
+
+    const suggestions = playable.map(v => ({
+      id: v.videoId,
+      title: v.title,
+      channel: v.author?.name || 'Karaokê',
+      duration: v.timestamp || '',
+      thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
+      url: v.url,
+    }));
+
+    return res.json({ 
+      suggestions, 
+      contextArtist: contextArtist || 'Mesmo Estilo'
+    });
+  } catch (err) {
+    console.error('Suggestions error:', err);
+    return res.status(500).json({ suggestions: [], contextArtist: '', error: err.message });
+  }
+});
+
 // Serve frontend dist if available
 const distPath = path.join(__dirname, 'dist');
 app.use(express.static(distPath));
