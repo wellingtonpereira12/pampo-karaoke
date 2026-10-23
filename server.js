@@ -248,53 +248,91 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-// YouTube related karaoke suggestions endpoint (baseado na música atual, mas excluindo a mesma faixa)
+// YouTube related karaoke suggestions endpoint (outra música de karaokê do mesmo cantor ou estilo, estritamente excluindo a mesma faixa)
 app.get('/api/suggestions', async (req, res) => {
   try {
     const rawTitle = String(req.query.title || '').trim();
-    const excludeId = String(req.query.excludeId || '').trim();
+    const excludeIdsParam = String(req.query.excludeIds || req.query.excludeId || '').trim();
+    const playlistContext = String(req.query.playlistContext || '').trim();
     const limit = parseInt(String(req.query.limit || '5'), 10);
 
     if (!rawTitle) {
       return res.json({ suggestions: [], contextArtist: '' });
     }
 
-    const norm = str => str.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+    const norm = str => str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
 
+    const isKaraokeTrack = (title, channel) => {
+      const text = `${title} ${channel}`.toLowerCase();
+      return /karaok[eê]|karaoketa|playback|instrumental|com letra/i.test(text);
+    };
+
+    // Clean tags like (Karaokê), [Playback], etc.
     let clean = rawTitle
-      .replace(/\(Karaok[eê].*?\)/gi, '')
-      .replace(/\[.*?\]/g, '')
-      .replace(/\|.*$/g, '')
+      .replace(/\(.*?\)/gi, '')
+      .replace(/\[.*?\]/gi, '')
+      .replace(/\|.*$/gi, '')
       .replace(/Karaok[eê].*$/gi, '')
+      .replace(/Playback.*$/gi, '')
+      .replace(/Instrumental.*$/gi, '')
       .trim();
 
-    const parts = clean.split(/[-–—]/).map(p => p.trim()).filter(Boolean);
-    let searchTerms = [];
-    let excludedParts = [];
-    let contextArtist = '';
+    const parts = clean.split(/[-–—•]/).map(p => p.trim()).filter(Boolean);
+    const artistClues = /&|\be\b|\bfeat\b|\bft\b|\bdupla\b|\bbanda\b|\btrio\b|\bmc\b|\bdj\b/i;
+
+    let artist = '';
+    let songName = '';
 
     if (parts.length >= 2) {
-      searchTerms.push(`${parts[0]} maiores sucessos karaoke instrumental`);
-      searchTerms.push(`${parts[1]} maiores sucessos karaoke instrumental`);
-      searchTerms.push(`${parts[0]} karaoke`);
-      searchTerms.push(`${parts[1]} karaoke`);
-      excludedParts = parts.map(norm);
-      contextArtist = parts[0];
-    } else {
-      searchTerms.push(`${clean} karaoke hits`);
-      excludedParts = [norm(clean)];
-      contextArtist = clean;
+      if (artistClues.test(parts[1]) && !artistClues.test(parts[0])) {
+        artist = parts[1];
+        songName = parts[0];
+      } else {
+        artist = parts[0];
+        songName = parts[1];
+      }
+    } else if (parts.length === 1) {
+      artist = parts[0];
+      songName = parts[0];
+    }
+
+    const songNorm = norm(songName);
+    const songWords = songName.toLowerCase().split(/\s+/).filter(w => w.length >= 4);
+
+    const excludeSet = new Set(
+      excludeIdsParam.split(',').map(s => s.trim()).filter(Boolean)
+    );
+
+    // Build focused search prompts strictly requesting KARAOKETA versions
+    const searchPrompts = [
+      `${artist} outros sucessos karaoketa instrumental`,
+      `${artist} mais tocadas karaoketa com letra`,
+      `${artist} melhores sucessos karaoketa`,
+      `${artist} karaoketa`,
+    ];
+
+    // If user has other songs in their playlist, add search prompts for them too
+    if (playlistContext) {
+      const extraTitles = playlistContext.split(';').map(t => t.trim()).filter(Boolean);
+      for (const extraTitle of extraTitles) {
+        const extraClean = extraTitle.replace(/\(.*?\)/gi, '').replace(/\[.*?\]/gi, '').trim();
+        const extraParts = extraClean.split(/[-–—•]/).map(p => p.trim()).filter(Boolean);
+        const extraArtist = extraParts[0] || extraClean;
+        if (extraArtist && norm(extraArtist) !== norm(artist)) {
+          searchPrompts.push(`${extraArtist} sucessos karaoketa`);
+        }
+      }
     }
 
     const allVideos = [];
-    for (const term of searchTerms) {
+    for (const prompt of searchPrompts) {
       try {
-        const r = await ytSearch(term);
+        const r = await ytSearch(prompt);
         if (r && Array.isArray(r.videos)) {
           allVideos.push(...r.videos);
         }
       } catch (e) {}
-      if (allVideos.length >= 16) break;
+      if (allVideos.length >= 25) break;
     }
 
     const seen = new Set();
@@ -302,24 +340,32 @@ app.get('/api/suggestions', async (req, res) => {
 
     for (const v of allVideos) {
       if (!v || !v.videoId) continue;
-      if (v.videoId === excludeId) continue;
+      if (excludeSet.has(v.videoId)) continue;
       if (seen.has(v.videoId)) continue;
       seen.add(v.videoId);
 
-      const titleNorm = norm(v.title);
+      const vNorm = norm(v.title);
 
-      // Se contém ambas as partes normalizadas, é outra versão da MESMA música! Exclui!
-      if (excludedParts.length >= 2) {
-        if (titleNorm.includes(excludedParts[0]) && titleNorm.includes(excludedParts[1])) {
-          continue;
-        }
+      // 1. Strictly exclude the SAME song currently playing
+      if (songNorm.length >= 3 && vNorm.includes(songNorm)) {
+        continue;
+      }
+
+      // Also check multi-word song title matches (e.g. "dormi" + "praca")
+      if (songWords.length >= 2 && songWords.every(w => vNorm.includes(norm(w)))) {
+        continue;
+      }
+
+      // 2. Strict check: MUST be a karaoketa / karaoke / playback track!
+      if (!isKaraokeTrack(v.title, v.author?.name || '')) {
+        continue;
       }
 
       candidateList.push(v);
       if (candidateList.length >= 12) break;
     }
 
-    // Verificação rápida de incorporação para entregar apenas sugestões 100% tocáveis
+    // Verify embeddability so no Error 150 blocked videos are suggested
     const verified = await Promise.all(
       candidateList.map(async v => {
         const embeddable = await isVideoEmbeddable(v.videoId);
@@ -340,7 +386,7 @@ app.get('/api/suggestions', async (req, res) => {
 
     return res.json({ 
       suggestions, 
-      contextArtist: contextArtist || 'Mesmo Estilo'
+      contextArtist: artist || 'Mesmo Estilo'
     });
   } catch (err) {
     console.error('Suggestions error:', err);

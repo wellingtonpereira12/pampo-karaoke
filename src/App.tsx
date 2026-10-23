@@ -562,6 +562,7 @@ export function App() {
                   }`}>
                     <RelatedSuggestions
                       currentSong={currentSong}
+                      playlist={activePlaylist}
                       onSelectSong={handleSelectSong}
                       onAddToPlaylist={handleAddToPlaylist}
                     />

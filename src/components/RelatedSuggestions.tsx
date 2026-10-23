@@ -4,12 +4,14 @@ import type { VideoItem } from '../audio/types';
 
 interface RelatedSuggestionsProps {
   currentSong: VideoItem;
+  playlist?: VideoItem[];
   onSelectSong: (song: VideoItem) => void;
   onAddToPlaylist?: (song: VideoItem) => void;
 }
 
 export const RelatedSuggestions: React.FC<RelatedSuggestionsProps> = ({
   currentSong,
+  playlist = [],
   onSelectSong,
   onAddToPlaylist,
 }) => {
@@ -22,8 +24,18 @@ export const RelatedSuggestions: React.FC<RelatedSuggestionsProps> = ({
     if (!currentSong) return;
     setLoading(true);
     try {
+      const excludeIds = [
+        currentSong.id,
+        ...(playlist || []).map(p => p.id),
+      ].filter(Boolean).join(',');
+
+      const playlistContext = (playlist || [])
+        .slice(0, 3)
+        .map(p => p.title)
+        .join(';');
+
       const res = await fetch(
-        `/api/suggestions?title=${encodeURIComponent(currentSong.title)}&excludeId=${encodeURIComponent(currentSong.id)}&limit=5`
+        `/api/suggestions?title=${encodeURIComponent(currentSong.title)}&excludeIds=${encodeURIComponent(excludeIds)}&playlistContext=${encodeURIComponent(playlistContext)}&limit=5`
       );
       if (res.ok) {
         const data = await res.json();
