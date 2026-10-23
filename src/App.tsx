@@ -32,6 +32,7 @@ export function App() {
   // Online Room State (Discord Style)
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
   const [syncEvent, setSyncEvent] = useState<{ action: string; currentTime?: number; isPlaying?: boolean; timestamp: number } | null>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(true);
   const lastSyncMessageTimeRef = useRef<number>(0);
   
   const [masterVolume, setMasterVolume] = useState(1.0);
@@ -72,7 +73,13 @@ export function App() {
     }) => {
       if (action === 'change_song') {
         setCurrentSong(song);
+        if (song) {
+          setIsStudioMode(true);
+          setIsVideoPlaying(true);
+        }
       } else {
+        if (action === 'play') setIsVideoPlaying(true);
+        if (action === 'pause') setIsVideoPlaying(false);
         setSyncEvent({
           action,
           currentTime,
@@ -200,6 +207,8 @@ export function App() {
   // Song Selection (supports Watch Together in rooms!)
   const handleSelectSong = (song: VideoItem) => {
     setCurrentSong(song);
+    setIsStudioMode(true); // Entra no modo estúdio automaticamente por padrão
+    setIsVideoPlaying(true);
 
     // If inside a room, broadcast song to everyone in the room!
     if (currentRoom) {
@@ -217,6 +226,9 @@ export function App() {
   };
 
   const handleBroadcastSync = (action: 'play' | 'pause' | 'seek', currentTime?: number, isPlaying?: boolean) => {
+    if (action === 'play') setIsVideoPlaying(true);
+    if (action === 'pause') setIsVideoPlaying(false);
+
     if (!currentRoom) return;
     socketService.syncVideoAction(currentRoom.id, action, currentSong, currentTime, isPlaying, user || undefined);
     
@@ -237,6 +249,8 @@ export function App() {
     setCurrentRoom(room);
     if (room.currentSong) {
       setCurrentSong(room.currentSong);
+      setIsStudioMode(true);
+      setIsVideoPlaying(room.isPlaying !== false);
       if (room.currentTime) {
         setSyncEvent({
           action: 'seek',
@@ -259,29 +273,31 @@ export function App() {
 
   return (
     <div className="relative min-h-screen retro-80s-bg text-slate-100 flex flex-col justify-between selection:bg-pink-500 selection:text-slate-950 overflow-x-hidden">
-      {/* 80s Disco Ball with Sweeping Light Beams */}
-      <DiscoBall />
+      {/* 80s Disco Ball with Sweeping Light Beams & Concert Beat Flashes */}
+      <DiscoBall isPlaying={isVideoPlaying && !!currentSong} />
 
       {/* Retro 80s Perspective Floor Grid */}
       <div className="retro-perspective-grid" />
 
-      {/* Header */}
-      <Header
-        onOpenAddInput={() => setIsAddInputModalOpen(true)}
-        onOpenSpeakerModal={() => setIsSpeakerModalOpen(true)}
-        onOpenRoomsModal={() => {
-          if (!user) {
-            openAuthModal();
-          } else {
-            setIsRoomsModalOpen(true);
-          }
-        }}
-        connectedMicCount={mics.length}
-        isFullscreen={isFullscreen}
-        onToggleFullscreen={handleToggleFullscreen}
-        isInRoom={!!currentRoom}
-        roomName={currentRoom?.name}
-      />
+      {/* Header (Hidden in Studio Mode to maximize stage view as requested) */}
+      {(!isStudioMode || !currentSong) && (
+        <Header
+          onOpenAddInput={() => setIsAddInputModalOpen(true)}
+          onOpenSpeakerModal={() => setIsSpeakerModalOpen(true)}
+          onOpenRoomsModal={() => {
+            if (!user) {
+              openAuthModal();
+            } else {
+              setIsRoomsModalOpen(true);
+            }
+          }}
+          connectedMicCount={mics.length}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={handleToggleFullscreen}
+          isInRoom={!!currentRoom}
+          roomName={currentRoom?.name}
+        />
+      )}
 
       {/* Discord-style Room Sidebar on the Left (When in Room) */}
       {currentRoom && (
@@ -293,31 +309,35 @@ export function App() {
       )}
 
       {/* Main Content Area (shifted right if in room) */}
-      <main className={`relative z-10 flex-1 flex flex-col items-center justify-start w-full mx-auto px-2 sm:px-4 py-3 transition-all duration-300 ${
-        isStudioMode && currentSong ? 'max-w-[98vw] md:px-6' : 'max-w-7xl'
+      <main className={`relative z-10 flex-1 flex flex-col items-center justify-start w-full mx-auto px-2 sm:px-4 py-2 transition-all duration-300 ${
+        isStudioMode && currentSong ? 'max-w-[99vw] md:px-4' : 'max-w-7xl'
       } ${
         currentRoom ? 'md:pl-80' : ''
       }`}>
-        {/* Microphone Rack */}
-        <MicRack
-          mics={mics}
-          onVolumeChange={handleVolumeChange}
-          onMonitorToggle={handleMonitorToggle}
-          onMuteToggle={handleMuteToggle}
-          onSelectForEffects={id => setSelectedMicForEffects(id)}
-          onRemove={handleRemoveMic}
-          onOpenAddModal={() => setIsAddInputModalOpen(true)}
-          activeEffectMicId={selectedMicForEffects}
-        />
+        {/* Microphone Rack (Visible in normal mode or when no song is playing) */}
+        {(!isStudioMode || !currentSong) && (
+          <MicRack
+            mics={mics}
+            onVolumeChange={handleVolumeChange}
+            onMonitorToggle={handleMonitorToggle}
+            onMuteToggle={handleMuteToggle}
+            onSelectForEffects={id => setSelectedMicForEffects(id)}
+            onRemove={handleRemoveMic}
+            onOpenAddModal={() => setIsAddInputModalOpen(true)}
+            activeEffectMicId={selectedMicForEffects}
+          />
+        )}
 
         {/* Dynamic Center Section: Search or Video Player */}
-        <div className="w-full flex-1 flex flex-col items-center justify-center my-2">
+        <div className="w-full flex-1 flex flex-col items-center justify-center my-1">
           {currentSong ? (
-            <div className="w-full flex flex-col items-center gap-4">
-              {/* Compact Search Bar above video to easily change songs */}
-              <div className={`w-full ${isStudioMode ? 'max-w-5xl' : 'max-w-3xl'} transition-all duration-300`}>
-                <SearchBar onSelectSong={handleSelectSong} isCompact />
-              </div>
+            <div className="w-full flex flex-col items-center gap-2">
+              {/* Compact Search Bar above video to easily change songs (only in normal mode) */}
+              {!isStudioMode && (
+                <div className="w-full max-w-3xl transition-all duration-300">
+                  <SearchBar onSelectSong={handleSelectSong} isCompact />
+                </div>
+              )}
 
               {/* Large YouTube Karaoke Stage Display with Room Sync */}
               <KaraokePlayer

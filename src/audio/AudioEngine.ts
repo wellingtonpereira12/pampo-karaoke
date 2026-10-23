@@ -586,6 +586,17 @@ export class AudioEngine {
     return level;
   }
 
+  public getOverallVoiceLevel(): number {
+    let maxLevel = 0;
+    this.micMap.forEach(mic => {
+      if (!mic.muted) {
+        const lvl = this.getMicLevel(mic.id);
+        if (lvl > maxLevel) maxLevel = lvl;
+      }
+    });
+    return maxLevel;
+  }
+
   public getAllMics(): ConnectedMicInfo[] {
     return Array.from(this.micMap.values()).map(mic => this.getMicInfo(mic));
   }
