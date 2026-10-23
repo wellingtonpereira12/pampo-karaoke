@@ -8,16 +8,30 @@ import { EffectsPanel } from './components/EffectsPanel';
 import { AddInputModal } from './components/AddInputModal';
 import { SpeakerModal } from './components/SpeakerModal';
 import { DiscoBall } from './components/DiscoBall';
+import { RoomsModal } from './components/RoomsModal';
+import { RoomSidebar } from './components/RoomSidebar';
+import { GoogleLoginModal } from './components/GoogleLoginModal';
+import { useAuth } from './context/AuthContext';
+import { socketService } from './services/socketService';
 import { AudioEngine } from './audio/AudioEngine';
 import type { ConnectedMicInfo, EffectPresetId, EffectSettings, VideoItem } from './audio/types';
+import type { Room } from './types/room';
 
 export function App() {
+  const { user, isAuthModalOpen, closeAuthModal, openAuthModal } = useAuth();
   const [mics, setMics] = useState<ConnectedMicInfo[]>([]);
   const [selectedMicForEffects, setSelectedMicForEffects] = useState<string | null>(null);
   const [currentSong, setCurrentSong] = useState<VideoItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Modals state
   const [isAddInputModalOpen, setIsAddInputModalOpen] = useState(false);
   const [isSpeakerModalOpen, setIsSpeakerModalOpen] = useState(false);
+  const [isRoomsModalOpen, setIsRoomsModalOpen] = useState(false);
+  
+  // Online Room State (Discord Style)
+  const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
+  
   const [masterVolume, setMasterVolume] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -29,6 +43,60 @@ export function App() {
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
+
+  // Connect socket and handle synchronized events
+  useEffect(() => {
+    const socket = socketService.connect();
+
+    const handleRoomUpdated = (updatedRoom: Room) => {
+      setCurrentRoom(prev => {
+        if (!prev || prev.id !== updatedRoom.id) return prev;
+        return updatedRoom;
+      });
+    };
+
+    const handleSyncVideo = ({ action, song }: { action: string; song: VideoItem | null }) => {
+      if (action === 'change_song' && song) {
+        setCurrentSong(song);
+      }
+    };
+
+    socket.on('room_updated', handleRoomUpdated);
+    socket.on('sync_video_action', handleSyncVideo);
+
+    return () => {
+      socket.off('room_updated', handleRoomUpdated);
+      socket.off('sync_video_action', handleSyncVideo);
+    };
+  }, []);
+
+  // Voice activity detection (Discord green talking indicator)
+  useEffect(() => {
+    if (!currentRoom || mics.length === 0) return;
+
+    let animId: number;
+    let wasSpeaking = false;
+    const engine = AudioEngine.getInstance();
+
+    const checkVoice = () => {
+      let maxLevel = 0;
+      mics.forEach(m => {
+        const lvl = engine.getMicLevel(m.id);
+        if (lvl > maxLevel) maxLevel = lvl;
+      });
+
+      const isSpeaking = maxLevel > 14;
+      if (isSpeaking !== wasSpeaking) {
+        wasSpeaking = isSpeaking;
+        socketService.reportVoiceActivity(isSpeaking);
+      }
+
+      animId = requestAnimationFrame(checkVoice);
+    };
+
+    animId = requestAnimationFrame(checkVoice);
+    return () => cancelAnimationFrame(animId);
+  }, [currentRoom, mics]);
 
   const handleToggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -46,6 +114,12 @@ export function App() {
       setMics(prev => [...prev, newMic]);
       if (!selectedMicForEffects) {
         setSelectedMicForEffects(newMic.id);
+      }
+
+      // If we are in an online room, stream our processed voice (with effects!) to peers
+      if (currentRoom) {
+        const processedStream = engine.getProcessedOutputStream();
+        socketService.setLocalStream(processedStream);
       }
     } catch (err) {
       console.error('Failed to add microphone:', err);
@@ -102,9 +176,37 @@ export function App() {
     setMics(engine.getAllMics());
   };
 
+  // Song Selection (supports Watch Together in rooms!)
+  const handleSelectSong = (song: VideoItem) => {
+    setCurrentSong(song);
+
+    // If inside a room, broadcast song to everyone in the room!
+    if (currentRoom) {
+      socketService.syncVideoAction(currentRoom.id, 'change_song', song, 0, true, user || undefined);
+      socketService.sendChatMessage(`🎶 Compartilhou a música: "${song.title}"`, 'song_change');
+    }
+  };
+
   const handleSearchAlternative = (title: string) => {
     setCurrentSong(null);
     setSearchQuery(title);
+  };
+
+  // Room Joined
+  const handleRoomJoined = (room: Room) => {
+    setCurrentRoom(room);
+    if (room.currentSong) {
+      setCurrentSong(room.currentSong);
+    }
+    // Stream mic audio to room
+    const engine = AudioEngine.getInstance();
+    const stream = engine.getProcessedOutputStream();
+    socketService.setLocalStream(stream);
+  };
+
+  const handleLeaveRoom = () => {
+    socketService.leaveCurrentRoom();
+    setCurrentRoom(null);
   };
 
   return (
@@ -119,13 +221,33 @@ export function App() {
       <Header
         onOpenAddInput={() => setIsAddInputModalOpen(true)}
         onOpenSpeakerModal={() => setIsSpeakerModalOpen(true)}
+        onOpenRoomsModal={() => {
+          if (!user) {
+            openAuthModal();
+          } else {
+            setIsRoomsModalOpen(true);
+          }
+        }}
         connectedMicCount={mics.length}
         isFullscreen={isFullscreen}
         onToggleFullscreen={handleToggleFullscreen}
+        isInRoom={!!currentRoom}
+        roomName={currentRoom?.name}
       />
 
-      {/* Main Content Area */}
-      <main className="relative z-10 flex-1 flex flex-col items-center justify-start w-full max-w-7xl mx-auto px-2 sm:px-4 py-3">
+      {/* Discord-style Room Sidebar on the Left (When in Room) */}
+      {currentRoom && (
+        <RoomSidebar
+          room={currentRoom}
+          onLeaveRoom={handleLeaveRoom}
+          onShareSongClick={() => setCurrentSong(null)}
+        />
+      )}
+
+      {/* Main Content Area (shifted right if in room) */}
+      <main className={`relative z-10 flex-1 flex flex-col items-center justify-start w-full max-w-7xl mx-auto px-2 sm:px-4 py-3 transition-all ${
+        currentRoom ? 'md:pl-80' : ''
+      }`}>
         {/* Microphone Rack */}
         <MicRack
           mics={mics}
@@ -144,7 +266,7 @@ export function App() {
             <div className="w-full flex flex-col items-center gap-4">
               {/* Compact Search Bar above video to easily change songs */}
               <div className="w-full max-w-3xl">
-                <SearchBar onSelectSong={setCurrentSong} isCompact />
+                <SearchBar onSelectSong={handleSelectSong} isCompact />
               </div>
 
               {/* Large YouTube Karaoke Stage Display */}
@@ -167,24 +289,26 @@ export function App() {
                   </span>
                 </div>
                 <p className="text-xs md:text-sm text-slate-400 mt-2">
-                  Pesquise seu hit favorito ou cole o link do YouTube para soltar a voz
+                  {currentRoom
+                    ? `Você está na sala "${currentRoom.name}". Escolha uma música para todos assistirem juntos!`
+                    : 'Pesquise seu hit favorito ou cole o link do YouTube para soltar a voz'}
                 </p>
               </div>
 
               <SearchBar 
-                onSelectSong={setCurrentSong} 
+                onSelectSong={handleSelectSong} 
                 initialQuery={searchQuery}
               />
 
               {/* Quick Picks / Popular Karaoke Songs */}
-              <PopularList onSelectSong={setCurrentSong} />
+              <PopularList onSelectSong={handleSelectSong} />
             </div>
           )}
         </div>
       </main>
 
       {/* Effects Panel at the bottom */}
-      <div className="relative z-10">
+      <div className={`relative z-10 transition-all ${currentRoom ? 'md:pl-80' : ''}`}>
         <EffectsPanel
           mics={mics}
           selectedMicId={selectedMicForEffects}
@@ -206,6 +330,17 @@ export function App() {
         onClose={() => setIsSpeakerModalOpen(false)}
         masterVolume={masterVolume}
         onMasterVolumeChange={handleMasterVolumeChange}
+      />
+
+      <RoomsModal
+        isOpen={isRoomsModalOpen}
+        onClose={() => setIsRoomsModalOpen(false)}
+        onRoomJoined={handleRoomJoined}
+      />
+
+      <GoogleLoginModal
+        isOpen={isAuthModalOpen}
+        onClose={closeAuthModal}
       />
     </div>
   );

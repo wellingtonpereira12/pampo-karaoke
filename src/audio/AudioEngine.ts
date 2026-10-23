@@ -151,6 +151,7 @@ export class AudioEngine {
   private micCounter = 1;
   private selectedOutputDeviceId = 'default';
   private sharedReverbBuffer: AudioBuffer | null = null;
+  private streamDestination: MediaStreamAudioDestinationNode | null = null;
 
   public static getInstance(): AudioEngine {
     if (!AudioEngine.instance) {
@@ -176,6 +177,17 @@ export class AudioEngine {
       this.audioCtx.resume();
     }
     return this.audioCtx;
+  }
+
+  public getProcessedOutputStream(): MediaStream {
+    const ctx = this.getContext();
+    if (!this.streamDestination) {
+      this.streamDestination = ctx.createMediaStreamDestination();
+      if (this.masterGain) {
+        this.masterGain.connect(this.streamDestination);
+      }
+    }
+    return this.streamDestination.stream;
   }
 
   public async setMasterVolume(vol: number): Promise<void> {
