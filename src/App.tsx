@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { MicRack } from './components/MicRack';
 import { SearchBar } from './components/SearchBar';
@@ -32,6 +32,7 @@ export function App() {
   // Online Room State (Discord Style)
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
   const [syncEvent, setSyncEvent] = useState<{ action: string; currentTime?: number; isPlaying?: boolean; timestamp: number } | null>(null);
+  const lastSyncMessageTimeRef = useRef<number>(0);
   
   const [masterVolume, setMasterVolume] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -219,12 +220,16 @@ export function App() {
     if (!currentRoom) return;
     socketService.syncVideoAction(currentRoom.id, action, currentSong, currentTime, isPlaying, user || undefined);
     
-    const actionLabel = action === 'play'
-      ? '▶ Deu play no vídeo'
-      : action === 'pause'
-        ? '⏸ Pausou o vídeo'
-        : `⏩ Pulou o vídeo para ${Math.floor(currentTime || 0)}s`;
-    socketService.sendChatMessage(actionLabel, 'system');
+    const now = Date.now();
+    if (now - lastSyncMessageTimeRef.current > 3000) {
+      lastSyncMessageTimeRef.current = now;
+      const actionLabel = action === 'play'
+        ? '▶ Deu play no vídeo'
+        : action === 'pause'
+          ? '⏸ Pausou o vídeo'
+          : `⏩ Sincronizou vídeo em ${Math.floor(currentTime || 0)}s`;
+      socketService.sendChatMessage(actionLabel, 'system');
+    }
   };
 
   // Room Joined

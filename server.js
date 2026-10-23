@@ -225,6 +225,10 @@ app.use((req, res) => {
 
 // Helper to serialize room for client consumption
 function serializeRoom(room) {
+  let currentTime = room.currentTime || 0;
+  if (room.isPlaying && room.startedAt > 0) {
+    currentTime = Math.max(0, Math.floor((Date.now() - room.startedAt) / 1000));
+  }
   return {
     id: room.id,
     name: room.name,
@@ -245,7 +249,7 @@ function serializeRoom(room) {
     })),
     currentSong: room.currentSong,
     isPlaying: room.isPlaying,
-    currentTime: room.currentTime,
+    currentTime: currentTime,
     createdAt: room.createdAt,
   };
 }
@@ -404,31 +408,39 @@ io.on('connection', socket => {
     currentRoomId = null;
   });
 
-  // 4. Synchronized Video Playback ("Assistir Juntos")
+  // 4. Synchronized Video Playback ("Assistir Juntos" no estilo FakeDC)
   socket.on('sync_video_action', ({ action, song, currentTime, isPlaying, user }) => {
     if (!currentRoomId) return;
     const room = rooms.get(currentRoomId);
     if (!room) return;
 
+    const curTime = typeof currentTime === 'number' ? currentTime : (room.currentTime || 0);
+
     if (action === 'change_song') {
       room.currentSong = song;
       room.currentTime = 0;
       room.isPlaying = true;
+      room.startedAt = Date.now();
     } else if (action === 'play') {
       room.isPlaying = true;
-      if (currentTime !== undefined) room.currentTime = currentTime;
+      room.currentTime = curTime;
+      room.startedAt = Date.now() - (curTime * 1000);
     } else if (action === 'pause') {
       room.isPlaying = false;
-      if (currentTime !== undefined) room.currentTime = currentTime;
+      room.currentTime = curTime;
+      room.startedAt = 0;
     } else if (action === 'seek') {
-      if (currentTime !== undefined) room.currentTime = currentTime;
+      room.currentTime = curTime;
+      if (room.isPlaying) {
+        room.startedAt = Date.now() - (curTime * 1000);
+      }
     }
 
     // Broadcast sync event to all other members in room
     socket.to(currentRoomId).emit('sync_video_action', {
       action,
       song: room.currentSong,
-      currentTime: room.currentTime,
+      currentTime: curTime,
       isPlaying: room.isPlaying,
       user,
     });
