@@ -99,7 +99,6 @@ export function App() {
       if (action === 'change_song') {
         setCurrentSong(song);
         if (song) {
-          setIsStudioMode(true);
           setIsVideoPlaying(true);
         }
       } else {
@@ -234,7 +233,6 @@ export function App() {
   // Song Selection (supports Watch Together in rooms!)
   const handleSelectSong = (song: VideoItem) => {
     setCurrentSong(song);
-    setIsStudioMode(true); // Entra no modo estúdio automaticamente por padrão
     setIsVideoPlaying(true);
 
     // If inside a room, broadcast song to everyone in the room!
@@ -393,7 +391,6 @@ export function App() {
     setCurrentRoom(room);
     if (room.currentSong) {
       setCurrentSong(room.currentSong);
-      setIsStudioMode(true);
       setIsVideoPlaying(room.isPlaying !== false);
       if (room.currentTime) {
         setSyncEvent({

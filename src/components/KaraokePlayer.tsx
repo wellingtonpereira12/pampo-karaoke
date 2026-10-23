@@ -459,7 +459,7 @@ export const KaraokePlayer: React.FC<KaraokePlayerProps> = ({
               className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur border transition duration-200 ${
                 isStudioMode
                   ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white border-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.6)]'
-                  : 'bg-slate-900/80 hover:bg-slate-800 text-slate-200 border-slate-700/80 hover:border-pink-500/50'
+                  : 'bg-gradient-to-r from-pink-500/20 to-purple-500/20 hover:from-pink-500/30 hover:to-purple-500/30 text-pink-300 border-pink-500/40 hover:border-pink-400'
               }`}
             >
               <RectangleHorizontal className="w-3.5 h-3.5" />
