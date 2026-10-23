@@ -23,6 +23,12 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 
+// 6. Keep audio service in-process to avoid IPC thread switching latency on Windows
+app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess');
+
+// 7. Bypass audio resampler and software buffer queue
+app.commandLine.appendSwitch('disable-audio-output-resampler');
+
 let mainWindow = null;
 let serverProcess = null;
 const SERVER_PORT = process.env.PORT || 3130;

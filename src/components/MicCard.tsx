@@ -77,6 +77,11 @@ export const MicCard: React.FC<MicCardProps> = ({
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-semibold text-slate-100">{mic.shortName}</span>
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-glow-green inline-block animate-pulse" />
+          {(!mic.effects || mic.effects.preset === 'clean') && (
+            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-medium" title="Sinal direto do hardware sem nenhum atraso de buffer">
+              Zero Delay
+            </span>
+          )}
         </div>
         <span className="text-[11px] text-slate-400 truncate" title={mic.label}>
           {mic.label}

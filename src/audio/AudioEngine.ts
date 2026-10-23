@@ -2,84 +2,6 @@ import { createReverbImpulseResponse } from './reverbGenerator';
 import type { ConnectedMicInfo, EffectPresetId, EffectSettings } from './types';
 
 export const PRESET_DEFAULTS: Record<EffectPresetId, EffectSettings> = {
-  show: {
-    preset: 'show',
-    reverbWet: 0.16,
-    delayWet: 0.0,
-    delayTime: 0.0,
-    delayFeedback: 0.0,
-    bassGain: 1.5,
-    midGain: 2.0,
-    trebleGain: 2.5,
-    compression: true,
-    robotMod: false,
-    telephoneMod: false,
-  },
-  studio: {
-    preset: 'studio',
-    reverbWet: 0.10,
-    delayWet: 0.0,
-    delayTime: 0.0,
-    delayFeedback: 0.0,
-    bassGain: 0.5,
-    midGain: 1.5,
-    trebleGain: 3.5,
-    compression: true,
-    robotMod: false,
-    telephoneMod: false,
-  },
-  arena: {
-    preset: 'arena',
-    reverbWet: 0.65,
-    delayWet: 0.48,
-    delayTime: 0.35,
-    delayFeedback: 0.45,
-    bassGain: 2.0,
-    midGain: 0.0,
-    trebleGain: 1.0,
-    compression: true,
-    robotMod: false,
-    telephoneMod: false,
-  },
-  warm: {
-    preset: 'warm',
-    reverbWet: 0.28,
-    delayWet: 0.08,
-    delayTime: 0.12,
-    delayFeedback: 0.15,
-    bassGain: 4.5,
-    midGain: 1.0,
-    trebleGain: -1.0,
-    compression: true,
-    robotMod: false,
-    telephoneMod: false,
-  },
-  radio: {
-    preset: 'radio',
-    reverbWet: 0.05,
-    delayWet: 0.0,
-    delayTime: 0.0,
-    delayFeedback: 0.0,
-    bassGain: -10.0,
-    midGain: 6.0,
-    trebleGain: -8.0,
-    compression: true,
-    robotMod: false,
-    telephoneMod: true,
-  },
-  robot: {
-    preset: 'robot',
-    reverbWet: 0.25,
-    delayWet: 0.20,
-    delayTime: 0.15,
-    delayFeedback: 0.25,
-    bassGain: 0.0,
-    midGain: 0.0,
-    trebleGain: 0.0,
-    compression: false,
-    robotMod: true,
-    telephoneMod: false,
-  },
   clean: {
     preset: 'clean',
     reverbWet: 0.0,
@@ -93,6 +15,84 @@ export const PRESET_DEFAULTS: Record<EffectPresetId, EffectSettings> = {
     robotMod: false,
     telephoneMod: false,
   },
+  show: {
+    preset: 'show',
+    reverbWet: 0.05,
+    delayWet: 0.0,
+    delayTime: 0.0,
+    delayFeedback: 0.0,
+    bassGain: 1.0,
+    midGain: 1.5,
+    trebleGain: 2.0,
+    compression: false,
+    robotMod: false,
+    telephoneMod: false,
+  },
+  studio: {
+    preset: 'studio',
+    reverbWet: 0.03,
+    delayWet: 0.0,
+    delayTime: 0.0,
+    delayFeedback: 0.0,
+    bassGain: 0.5,
+    midGain: 1.0,
+    trebleGain: 2.5,
+    compression: false,
+    robotMod: false,
+    telephoneMod: false,
+  },
+  arena: {
+    preset: 'arena',
+    reverbWet: 0.25,
+    delayWet: 0.15,
+    delayTime: 0.25,
+    delayFeedback: 0.25,
+    bassGain: 1.0,
+    midGain: 0.0,
+    trebleGain: 1.0,
+    compression: false,
+    robotMod: false,
+    telephoneMod: false,
+  },
+  warm: {
+    preset: 'warm',
+    reverbWet: 0.08,
+    delayWet: 0.0,
+    delayTime: 0.0,
+    delayFeedback: 0.0,
+    bassGain: 2.5,
+    midGain: 1.0,
+    trebleGain: 0.0,
+    compression: false,
+    robotMod: false,
+    telephoneMod: false,
+  },
+  radio: {
+    preset: 'radio',
+    reverbWet: 0.0,
+    delayWet: 0.0,
+    delayTime: 0.0,
+    delayFeedback: 0.0,
+    bassGain: -8.0,
+    midGain: 5.0,
+    trebleGain: -6.0,
+    compression: false,
+    robotMod: false,
+    telephoneMod: true,
+  },
+  robot: {
+    preset: 'robot',
+    reverbWet: 0.05,
+    delayWet: 0.1,
+    delayTime: 0.12,
+    delayFeedback: 0.15,
+    bassGain: 0.0,
+    midGain: 0.0,
+    trebleGain: 0.0,
+    compression: false,
+    robotMod: true,
+    telephoneMod: false,
+  },
 };
 
 interface MicInternalGraph {
@@ -102,6 +102,11 @@ interface MicInternalGraph {
   deviceId: string;
   stream: MediaStream;
   sourceNode: MediaStreamAudioSourceNode;
+  
+  // Direct Zero-Latency Passthrough Nodes
+  directGainNode: GainNode;
+  dspGainNode: GainNode;
+
   highpassFilter: BiquadFilterNode;
   eqLow: BiquadFilterNode;
   eqMid: BiquadFilterNode;
@@ -171,8 +176,8 @@ export class AudioEngine {
       this.masterGain.gain.setValueAtTime(1.0, this.audioCtx.currentTime);
       this.masterGain.connect(this.audioCtx.destination);
 
-      // Pre-synthesize shared tight impulse response (1.0s decay) to prevent trailing ghost echoes
-      this.sharedReverbBuffer = createReverbImpulseResponse(this.audioCtx, 1.0, 3.2);
+      // Pre-synthesize shared ultra-tight impulse response (0.35s decay) to prevent any trailing ghost echoes
+      this.sharedReverbBuffer = createReverbImpulseResponse(this.audioCtx, 0.35, 6.5);
     }
     if (this.audioCtx.state === 'suspended') {
       this.audioCtx.resume();
@@ -356,6 +361,14 @@ export class AudioEngine {
     const dryGainNode = ctx.createGain();
     dryGainNode.gain.setValueAtTime(1.0, ctx.currentTime);
 
+    // Direct zero-latency passthrough gain (bypasses all filters/compressors)
+    const directGainNode = ctx.createGain();
+    directGainNode.gain.setValueAtTime(1.0, ctx.currentTime);
+
+    // DSP chain input gain (active only when effects are enabled)
+    const dspGainNode = ctx.createGain();
+    dspGainNode.gain.setValueAtTime(0.0, ctx.currentTime);
+
     // Master per-channel controls
     const channelGainNode = ctx.createGain();
     const monitorGainNode = ctx.createGain(); // Retorno de voz (caixas de som)
@@ -364,10 +377,17 @@ export class AudioEngine {
     const muteGainNode = ctx.createGain();
     muteGainNode.gain.setValueAtTime(1.0, ctx.currentTime);
 
-    // Hook up signal chain:
-    sourceNode.connect(highpassFilter);
+    // Route 1: 100% Direct Zero-Latency Passthrough (Zero buffers, zero filters, pure instant voice)
+    sourceNode.connect(directGainNode);
+    directGainNode.connect(channelGainNode);
+
+    // Passive VU meter analyser tap from raw input
+    sourceNode.connect(analyserNode);
+
+    // Route 2: DSP Chain (Used only when custom EQ/Reverb/Delay effects are turned on)
+    sourceNode.connect(dspGainNode);
+    dspGainNode.connect(highpassFilter);
     highpassFilter.connect(inputGainNode);
-    inputGainNode.connect(analyserNode);
 
     // inputGain -> EQ chain
     inputGainNode.connect(eqLow);
@@ -412,7 +432,8 @@ export class AudioEngine {
       monitorGainNode.connect(this.masterGain);
     }
 
-    const defaultEffects = { ...PRESET_DEFAULTS.show };
+    // Default to clean (Zero delay direct passthrough)
+    const defaultEffects = { ...PRESET_DEFAULTS.clean };
 
     const micGraph: MicInternalGraph = {
       id,
@@ -421,6 +442,8 @@ export class AudioEngine {
       deviceId,
       stream,
       sourceNode,
+      directGainNode,
+      dspGainNode,
       highpassFilter,
       eqLow,
       eqMid,
@@ -519,6 +542,31 @@ export class AudioEngine {
     const ctx = this.audioCtx;
     mic.effects = settings;
 
+    const isClean = 
+      settings.preset === 'clean' ||
+      (settings.reverbWet === 0 &&
+       settings.delayWet === 0 &&
+       !settings.compression &&
+       !settings.telephoneMod &&
+       !settings.robotMod &&
+       settings.bassGain === 0 &&
+       settings.midGain === 0 &&
+       settings.trebleGain === 0);
+
+    if (isClean) {
+      // 100% Direct Passthrough Route (Bypasses all filter/compressor nodes, near-zero hardware latency)
+      mic.directGainNode.gain.setValueAtTime(1.0, ctx.currentTime);
+      mic.dspGainNode.gain.setValueAtTime(0.0, ctx.currentTime);
+      mic.reverbGain.gain.setValueAtTime(0.0, ctx.currentTime);
+      mic.delayGain.gain.setValueAtTime(0.0, ctx.currentTime);
+      mic.delayFeedbackGain.gain.setValueAtTime(0.0, ctx.currentTime);
+      return;
+    }
+
+    // Activate DSP Route when effects are requested
+    mic.directGainNode.gain.setValueAtTime(0.0, ctx.currentTime);
+    mic.dspGainNode.gain.setValueAtTime(1.0, ctx.currentTime);
+
     // EQ
     mic.eqLow.gain.setTargetAtTime(settings.bassGain, ctx.currentTime, 0.05);
     mic.eqMid.gain.setTargetAtTime(settings.midGain, ctx.currentTime, 0.05);
@@ -538,8 +586,12 @@ export class AudioEngine {
 
     // Delay
     mic.delayGain.gain.setTargetAtTime(settings.delayWet, ctx.currentTime, 0.05);
-    mic.delayNode.delayTime.setTargetAtTime(Math.max(0.01, Math.min(settings.delayTime, 1.5)), ctx.currentTime, 0.05);
-    mic.delayFeedbackGain.gain.setTargetAtTime(Math.max(0, Math.min(settings.delayFeedback, 0.8)), ctx.currentTime, 0.05);
+    if (settings.delayWet > 0) {
+      mic.delayNode.delayTime.setTargetAtTime(Math.max(0.01, Math.min(settings.delayTime, 1.5)), ctx.currentTime, 0.05);
+      mic.delayFeedbackGain.gain.setTargetAtTime(Math.max(0, Math.min(settings.delayFeedback, 0.8)), ctx.currentTime, 0.05);
+    } else {
+      mic.delayFeedbackGain.gain.setValueAtTime(0.0, ctx.currentTime);
+    }
 
     // Telephone / Radio mod
     if (settings.telephoneMod) {

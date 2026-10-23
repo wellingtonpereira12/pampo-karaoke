@@ -31,7 +31,11 @@ export const AddInputModal: React.FC<AddInputModalProps> = ({ isOpen, onClose, o
       const devices = await engine.getAvailableInputDevices();
       setAvailableDevices(devices);
       if (devices.length > 0) {
-        setSelectedDeviceId(devices[0].deviceId);
+        // Prioritize real hardware mics (USB, Realtek) over virtual drivers like Krisp or Voicemod
+        const realHardware = devices.find(d => 
+          !/krisp|voicemod|virtual/i.test(d.label || '')
+        );
+        setSelectedDeviceId(realHardware?.deviceId || devices[0].deviceId);
       }
     } finally {
       setLoading(false);
@@ -124,6 +128,7 @@ export const AddInputModal: React.FC<AddInputModalProps> = ({ isOpen, onClose, o
                 {availableDevices.map((device, index) => {
                   const isSelected = selectedDeviceId === device.deviceId;
                   const label = device.label || `Microfone ${index + 1}`;
+                  const isVirtual = /krisp|voicemod|virtual/i.test(label);
                   return (
                     <button
                       key={device.deviceId || index}
@@ -140,7 +145,16 @@ export const AddInputModal: React.FC<AddInputModalProps> = ({ isOpen, onClose, o
                         }`}>
                           <Mic className="w-4 h-4" />
                         </div>
-                        <span className="text-sm font-medium truncate">{label}</span>
+                        <div className="flex flex-col truncate">
+                          <span className="text-sm font-medium truncate">{label}</span>
+                          <span className="text-[10.5px]">
+                            {isVirtual ? (
+                              <span className="text-amber-400 font-medium">⚠️ Driver virtual (adiciona atraso na voz)</span>
+                            ) : (
+                              <span className="text-emerald-400 font-medium">⚡ Hardware Direto (Zero Delay recomendado)</span>
+                            )}
+                          </span>
+                        </div>
                       </div>
                       {isSelected && <Check className="w-5 h-5 text-emerald-400 shrink-0 ml-2" />}
                     </button>

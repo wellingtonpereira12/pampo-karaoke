@@ -1,11 +1,11 @@
 /**
- * Generates an algorithmic stereo impulse response for Web Audio ConvolverNode.
- * Produces smooth, tight concert hall and plate reverb without lingering echo tails.
+ * Algorithmic stereo impulse response for Web Audio ConvolverNode.
+ * Tuned with ultra-fast exponential decay (0.35s) to eliminate any lingering echo/delay tails ("rabo de voz").
  */
 export function createReverbImpulseResponse(
   audioCtx: AudioContext,
-  duration = 1.0,
-  decay = 3.2,
+  duration = 0.35,
+  decay = 6.5,
   reverse = false
 ): AudioBuffer {
   const sampleRate = audioCtx.sampleRate;
@@ -16,9 +16,8 @@ export function createReverbImpulseResponse(
 
   for (let i = 0; i < length; i++) {
     const n = reverse ? length - 1 - i : i;
-    // Exponential decay envelope - steep decay prevents trailing echo tail
-    const envelope = Math.pow(1 - n / length, decay);
-    // Stereo decorrelated noise
+    // Ultra-steep exponential decay drops to zero fast to avoid any delayed ghost reflections
+    const envelope = Math.pow(Math.max(0, 1 - n / length), decay);
     left[i] = ((Math.random() * 2) - 1) * envelope;
     right[i] = ((Math.random() * 2) - 1) * envelope;
   }

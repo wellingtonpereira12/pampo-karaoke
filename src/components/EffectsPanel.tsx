@@ -36,24 +36,31 @@ interface PresetDefinition {
 
 const PRESET_LIST: PresetDefinition[] = [
   {
+    id: 'clean',
+    name: 'Voz Direta (Zero Delay)',
+    tagline: 'Sinal 100% puro e instantâneo: sem eco, sem reverb e sem nenhum atraso',
+    icon: VolumeX,
+    color: 'from-emerald-500/20 to-cyan-500/20 border-emerald-500/70 text-emerald-300',
+    badge: 'Zero Delay',
+  },
+  {
     id: 'show',
     name: 'Karaokê Show',
-    tagline: 'Reverb de show ao vivo, presença vocal e calor',
+    tagline: 'Presença vocal e brilho de show ao vivo com cauda ultra-curta',
     icon: Sparkles,
-    color: 'from-emerald-500/20 to-teal-500/20 border-emerald-500/60 text-emerald-400',
-    badge: 'Recomendado',
+    color: 'from-pink-500/20 to-purple-500/20 border-pink-500/60 text-pink-400',
   },
   {
     id: 'studio',
     name: 'Estúdio Cristal',
-    tagline: 'Voz nítida, compressão suave e brilho de alta definição',
+    tagline: 'Voz nítida e brilho sutil de alta definição',
     icon: Disc,
     color: 'from-blue-500/20 to-cyan-500/20 border-blue-500/60 text-blue-400',
   },
   {
     id: 'arena',
     name: 'Eco de Arena',
-    tagline: 'Delay espacial com repetições e reverb amplo de estádio',
+    tagline: 'Delay espacial com repetições e reverb de estádio',
     icon: Waves,
     color: 'from-purple-500/20 to-indigo-500/20 border-purple-500/60 text-purple-400',
   },
@@ -76,14 +83,7 @@ const PRESET_LIST: PresetDefinition[] = [
     name: 'Robô Cibernético',
     tagline: 'Modulação de frequência eletrônica futurista',
     icon: Bot,
-    color: 'from-pink-500/20 to-rose-500/20 border-pink-500/60 text-pink-400',
-  },
-  {
-    id: 'clean',
-    name: 'Voz Limpa (Dry)',
-    tagline: 'Sinal 100% natural sem processamento ou reverb',
-    icon: VolumeX,
-    color: 'from-slate-700/20 to-slate-800/20 border-slate-700 text-slate-300',
+    color: 'from-rose-500/20 to-pink-500/20 border-rose-500/60 text-rose-400',
   },
 ];
 
