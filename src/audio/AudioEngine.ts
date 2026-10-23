@@ -4,7 +4,7 @@ import type { ConnectedMicInfo, EffectPresetId, EffectSettings } from './types';
 export const PRESET_DEFAULTS: Record<EffectPresetId, EffectSettings> = {
   show: {
     preset: 'show',
-    reverbWet: 0.25,
+    reverbWet: 0.16,
     delayWet: 0.0,
     delayTime: 0.0,
     delayFeedback: 0.0,
@@ -17,9 +17,9 @@ export const PRESET_DEFAULTS: Record<EffectPresetId, EffectSettings> = {
   },
   studio: {
     preset: 'studio',
-    reverbWet: 0.22,
+    reverbWet: 0.10,
     delayWet: 0.0,
-    delayTime: 0.1,
+    delayTime: 0.0,
     delayFeedback: 0.0,
     bassGain: 0.5,
     midGain: 1.5,
@@ -163,15 +163,16 @@ export class AudioEngine {
   public getContext(): AudioContext {
     if (!this.audioCtx) {
       const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      // latencyHint: 0 requests the lowest possible buffer size from the audio hardware
       this.audioCtx = new AudioCtxClass({
-        latencyHint: 'interactive',
+        latencyHint: 0,
       });
       this.masterGain = this.audioCtx.createGain();
       this.masterGain.gain.setValueAtTime(1.0, this.audioCtx.currentTime);
       this.masterGain.connect(this.audioCtx.destination);
 
-      // Pre-synthesize shared impulse response for rich low-latency reverb
-      this.sharedReverbBuffer = createReverbImpulseResponse(this.audioCtx, 1.8, 2.8);
+      // Pre-synthesize shared tight impulse response (1.0s decay) to prevent trailing ghost echoes
+      this.sharedReverbBuffer = createReverbImpulseResponse(this.audioCtx, 1.0, 3.2);
     }
     if (this.audioCtx.state === 'suspended') {
       this.audioCtx.resume();
@@ -241,14 +242,24 @@ export class AudioEngine {
   public async addMicrophone(deviceId: string, customLabel?: string): Promise<ConnectedMicInfo> {
     const ctx = this.getContext();
     
-    // Acquire the media stream for the selected mic
+    // Acquire the media stream for the selected mic with zero browser DSP latency
+    const audioConstraints: Record<string, unknown> = {
+      deviceId: deviceId ? { exact: deviceId } : undefined,
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      latency: 0,
+      channelCount: 1,
+      // Chromium legacy WebRTC audio processing flags (bypasses software buffer queue)
+      googEchoCancellation: false,
+      googAutoGainControl: false,
+      googNoiseSuppression: false,
+      googHighpassFilter: false,
+      googTypingNoiseDetection: false,
+    };
+
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: deviceId ? { exact: deviceId } : undefined,
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      },
+      audio: audioConstraints as MediaTrackConstraints,
     });
 
     const shortName = `Microfone ${this.micCounter++}`;
@@ -277,13 +288,13 @@ export class AudioEngine {
     eqHigh.type = 'highshelf';
     eqHigh.frequency.setValueAtTime(8000, ctx.currentTime);
 
-    // 3. Dynamic Vocal Compressor
+    // 3. Dynamic Vocal Compressor with ultra-fast release (0.06s) to eliminate tail pumping
     const compressor = ctx.createDynamicsCompressor();
-    compressor.threshold.setValueAtTime(-24, ctx.currentTime);
-    compressor.knee.setValueAtTime(12, ctx.currentTime);
-    compressor.ratio.setValueAtTime(4, ctx.currentTime);
+    compressor.threshold.setValueAtTime(-22, ctx.currentTime);
+    compressor.knee.setValueAtTime(10, ctx.currentTime);
+    compressor.ratio.setValueAtTime(3.5, ctx.currentTime);
     compressor.attack.setValueAtTime(0.003, ctx.currentTime);
-    compressor.release.setValueAtTime(0.25, ctx.currentTime);
+    compressor.release.setValueAtTime(0.06, ctx.currentTime);
 
     const bypassCompressorGain = ctx.createGain();
     const compressorWetGain = ctx.createGain();
@@ -302,13 +313,13 @@ export class AudioEngine {
       reverbConvolver.buffer = this.sharedReverbBuffer;
     }
     const reverbGain = ctx.createGain();
-    reverbGain.gain.setValueAtTime(0.42, ctx.currentTime);
+    reverbGain.gain.setValueAtTime(0.16, ctx.currentTime);
 
     // 6. Effects - Delay
     const delayNode = ctx.createDelay(2.0);
-    delayNode.delayTime.setValueAtTime(0.18, ctx.currentTime);
+    delayNode.delayTime.setValueAtTime(0.0, ctx.currentTime);
     const delayFeedbackGain = ctx.createGain();
-    delayFeedbackGain.gain.setValueAtTime(0.22, ctx.currentTime);
+    delayFeedbackGain.gain.setValueAtTime(0.0, ctx.currentTime);
     const delayGain = ctx.createGain();
     delayGain.gain.setValueAtTime(0.0, ctx.currentTime);
 
