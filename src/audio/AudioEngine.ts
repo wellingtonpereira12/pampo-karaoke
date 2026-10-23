@@ -243,24 +243,37 @@ export class AudioEngine {
     const ctx = this.getContext();
     
     // Acquire the media stream for the selected mic with zero browser DSP latency
-    const audioConstraints: Record<string, unknown> = {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-      latency: 0,
-      channelCount: 1,
-      // Chromium legacy WebRTC audio processing flags (bypasses software buffer queue)
-      googEchoCancellation: false,
-      googAutoGainControl: false,
-      googNoiseSuppression: false,
-      googHighpassFilter: false,
-      googTypingNoiseDetection: false,
-    };
+    const targetDeviceId = (deviceId && deviceId !== 'default') ? { exact: deviceId } : undefined;
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: audioConstraints as MediaTrackConstraints,
-    });
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: targetDeviceId,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          latency: 0,
+          channelCount: 1,
+          // Chromium legacy WebRTC audio processing flags (bypasses software buffer queue)
+          googEchoCancellation: false,
+          googAutoGainControl: false,
+          googNoiseSuppression: false,
+          googHighpassFilter: false,
+          googTypingNoiseDetection: false,
+        } as MediaTrackConstraints,
+      });
+    } catch (err) {
+      console.warn('Ultra-low latency mic constraints not accepted by driver, falling back to minimal constraints:', err);
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: targetDeviceId,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+    }
 
     const shortName = `Microfone ${this.micCounter++}`;
     const id = `mic-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
