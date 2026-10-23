@@ -50,6 +50,12 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// REST endpoint to get active public rooms list
+app.get('/api/rooms', (req, res) => {
+  const roomList = Array.from(rooms.values()).map(serializeRoom);
+  res.json(roomList);
+});
+
 // Official Google OAuth 2.0 Auth Redirect
 app.get('/api/auth/google', (req, res) => {
   if (!GOOGLE_CLIENT_ID) {
@@ -256,6 +262,11 @@ io.on('connection', socket => {
 
   // Send available rooms on connect
   socket.emit('rooms_list', Array.from(rooms.values()).map(serializeRoom));
+
+  // Client requests rooms list explicitly
+  socket.on('get_rooms', () => {
+    socket.emit('rooms_list', Array.from(rooms.values()).map(serializeRoom));
+  });
 
   // 1. Create Room
   socket.on('create_room', ({ name, password, user }, callback) => {
@@ -476,7 +487,14 @@ io.on('connection', socket => {
         socket.to(currentRoomId).emit('peer_left', { socketId: socket.id });
 
         if (room.participants.size === 0) {
-          rooms.delete(currentRoomId);
+          // Grace period: keep room alive for 3 minutes so it does not disappear if creator refreshes or switches device
+          setTimeout(() => {
+            const current = rooms.get(currentRoomId);
+            if (current && current.participants.size === 0) {
+              rooms.delete(currentRoomId);
+              broadcastRoomsList();
+            }
+          }, 3 * 60 * 1000);
         } else {
           const remaining = Array.from(room.participants.values());
           if (!remaining.some(p => p.isHost)) {

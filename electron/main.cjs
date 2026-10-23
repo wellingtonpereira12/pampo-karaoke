@@ -112,23 +112,20 @@ function createWindow() {
     callback(true);
   });
 
-  // Load target URL (Dev server, local server, or fallback to live site)
-  const targetUrl = process.env.VITE_DEV_SERVER_URL || SERVER_URL;
+  // Load target URL (Connect to production cloud server so all devices share the same rooms, with local fallback)
+  const targetUrl = process.env.VITE_DEV_SERVER_URL || 'https://karaoke.pampo.tech';
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    console.warn(`[Pampo Desktop] Page failed to load (${errorCode}: ${errorDescription}), retrying...`);
+    console.warn(`[Pampo Desktop] Page failed to load (${errorCode}: ${errorDescription}), retrying with local backend...`);
     setTimeout(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.loadURL(targetUrl).catch(() => {
-          // If local server is not accessible, load online cloud version seamlessly
-          mainWindow.loadURL('https://karaoke.pampo.tech').catch(() => {});
-        });
+        mainWindow.loadURL(SERVER_URL).catch(() => {});
       }
-    }, 1000);
+    }, 1500);
   });
 
   mainWindow.loadURL(targetUrl).catch(() => {
-    mainWindow.loadURL('https://karaoke.pampo.tech').catch(() => {});
+    mainWindow.loadURL(SERVER_URL).catch(() => {});
   });
 
   mainWindow.on('closed', () => {

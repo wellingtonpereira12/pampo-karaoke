@@ -40,10 +40,22 @@ export const RoomsModal: React.FC<RoomsModalProps> = ({ isOpen, onClose, onRoomJ
   useEffect(() => {
     if (!isOpen) return;
 
+    // Fetch immediately via REST endpoint
+    fetch('/api/rooms')
+      .then(res => res.json())
+      .then(list => {
+        if (Array.isArray(list)) {
+          setRooms(list);
+        }
+      })
+      .catch(() => {});
+
     const socket = socketService.connect();
     
     const handleRoomsList = (list: Room[]) => {
-      setRooms(list);
+      if (Array.isArray(list)) {
+        setRooms(list);
+      }
     };
 
     socket.on('rooms_list', handleRoomsList);
